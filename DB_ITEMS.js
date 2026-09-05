@@ -254,7 +254,7 @@ window.PokeMisteryRL_Items.DB_ITEMS = {
   },
 
   velenaculeo: {
-    id: "velenoCuleo",
+    id: "velenaculeo",
     nome: "Velenaculeo",
     immagine: "./img/items/poisonbarb.png",
     effetto: "DMG [POISON] ×1.20.",
@@ -266,7 +266,7 @@ window.PokeMisteryRL_Items.DB_ITEMS = {
 
   fiocco_rosa: {
     id: "fiocco_rosa",
-    nome: "Piuma Folletto",
+    nome: "Fiocco Rosa",
     immagine: "./img/items/fairyfeather.png",
     effetto: "Danno mosse FOLLETTO ×1,20.",
     rarita: null,
@@ -355,7 +355,7 @@ window.PokeMisteryRL_Items.DB_ITEMS = {
 
 };
 
-/* Le icone non vengono più lette da file locali: arrivano live da PokeAPI. */
+/* Le icone locali recuperate restano la fonte primaria; PokeAPI è solo fallback. */
 const POKEAPI_ITEM_IDS = {
   bitorzolello:"rocky-helmet", avanzi:"leftovers", evolcondensa:"eviolite",
   vulneropolizza:"weakness-policy", palla_fumo:"smoke-ball", assorbisfera:"life-orb",
@@ -371,8 +371,6 @@ const POKEAPI_ITEM_IDS = {
   amuleto:"amulet-coin"
 };
 
-Object.values(window.PokeMisteryRL_Items.DB_ITEMS).forEach(item => { item.immagine = ""; });
-
 window.PokeMisteryRL_Items.loadLiveIcons = async function(){
   const db = window.PokeMisteryRL_Items.DB_ITEMS;
   const cacheKey = "pokeMisteryRL.pokeapi.item-icons.v1";
@@ -383,6 +381,7 @@ window.PokeMisteryRL_Items.loadLiveIcons = async function(){
     await Promise.all(entries.slice(index, index + 6).map(async ([key, slug]) => {
       const item = db[key];
       if(!item) return;
+      if(item.immagine) return;
       const saved = cache[slug];
       if(saved){ item.immagine = saved; return; }
       try {
