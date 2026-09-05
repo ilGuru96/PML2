@@ -1765,7 +1765,8 @@ PokeMisteryRL.Map = (() => {
     const bottom = $("bottomPanel");
     const modes = window.PokeMisteryRL_Modes;
     const floor = modes?.getFloor?.(PKM_RUN?.mode, PKM_RUN?.floor);
-    let background = modes?.getFloorBackground?.(PKM_RUN?.mode, PKM_RUN?.floor);
+    // Tutti i nodi condividono lo scenario bosco, senza varianti per piano.
+    let background = "./img/prove-bosco/BoscoSmeraldo-Map-Orizzontale.png";
 
     // La modalità Test usa gli scenari Camp: il sorteggio viene salvato
     // nella run, quindi lo sfondo non cambia a ogni ridisegno della mappa.
@@ -1773,7 +1774,7 @@ PokeMisteryRL.Map = (() => {
       // Le due finestre della mappa (1/2/3 e 3/2/1) condividono lo stesso
       // scenario roccioso, così il cambio rigenera solo i nodi.
       background = "./img/prove-bosco/BoscoSmeraldo-Map-Orizzontale.png";
-    }else if(isTestCampaign()){
+    }else if(false && isTestCampaign()){
       const currentFloor = Number(PKM_RUN.floor) || 1;
       const maxFloor = Math.max(1, Number(modes?.get?.(PKM_RUN?.mode)?.piani?.length) || 1);
       PKM_RUN.testFloorBackgrounds ||= {};
@@ -2118,6 +2119,9 @@ PokeMisteryRL.Map = (() => {
           const group = isTest2Mode() && leader ? Array.from({length:groupSize}, () => leader) : [...groupPool].sort(() => Math.random() - .5).slice(0, 2);
           const reward = typeItems.find(item => String(item.tipo_mossa).toLowerCase() === String(eventType).toLowerCase());
           node.eventType = eventType;
+          // In Test2 questo evento è il Passaggio nascosto: un incontro
+          // facoltativo di reclutamento, non il branco con pedaggio.
+          if(isTest2Mode()) node.eventKind = Math.random() < .5 ? "toll" : "hidden-recruit";
           node.eventRewardId = reward?.id || null;
           node.toll = isTest2Mode() ? Math.max(60, 50 + Number(PKM_RUN.floor || 1) * 50) : 0;
           node.enemyPreviews = group.map(p => ({ id:p.id, nome:p.nome, immagine:p.immagine, stage:Number(p.stage) }));
@@ -2166,7 +2170,7 @@ PokeMisteryRL.Map = (() => {
     if(!PKM_RUN) return;
     applyModeMapBackground();
     const floorData = window.PokeMisteryRL_Modes?.getFloor?.(PKM_RUN.mode, PKM_RUN.floor) || null;
-    const layout = [1, 2, 3, 2, 1];
+    const layout = [1, 2, 2, 1];
     const allPokemon = Object.values(PKM_DB).filter(Boolean);
     const findLine = start => {
       const line = [];
@@ -2189,19 +2193,21 @@ PokeMisteryRL.Map = (() => {
       3: line.find(pokemon => Number(pokemon.stage) === 3) || line[line.length - 1]
     } : {};
     // Tre stadi sempre presenti: 1/1+2/1+2+2/2+3/3-boss.
-    const stagePlan = [[1], [1,2], [1,2,2], [2,3], [3]];
+    const stagePlan = [[1], [1,2], [2,2], [3]];
     PKM_RUN.map = layout.map((count, rowIndex) => Array.from({length:count}, (_, col) => {
       const stage = stagePlan[rowIndex][col];
       const chosen = stages[stage] || rand(mainCandidates);
+      const rescuedFriend = rowIndex === layout.length - 1 ? PKM_RUN.hiddenRescue?.friend : null;
       return {
         id:`passage-r${rowIndex}c${col}`,
         row:rowIndex,
         col,
-        type:rowIndex === layout.length - 1 ? "boss" : "fight",
+        type:"fight",
+        rescueBoss:rowIndex === layout.length - 1,
         ok:rowIndex === 0,
         done:false,
         kid:[],
-        enemyPreview:chosen ? { id:chosen.id, nome:chosen.nome, immagine:chosen.immagine, stage:Number(chosen.stage) } : null,
+        enemyPreview:rescuedFriend || (chosen ? { id:chosen.id, nome:chosen.nome, immagine:chosen.immagine, stage:Number(chosen.stage) } : null),
         passageLine: line?.map(pokemon => pokemon.nome) || []
       };
     }));
@@ -2377,7 +2383,16 @@ PokeMisteryRL.Progress = (() => {
 
   const openHiddenPassage = () => {
     if(!PKM_RUN) return false;
-    modal(`<div class="center hidden-passage-prompt"><span>❓ PASSAGGIO NASCOSTO</span><h2>Hai trovato un passaggio...</h2><p>Vuoi esplorare?</p><div><button type="button" onclick="enterHiddenPassage()">SÌ, ESPLORA</button><button type="button" onclick="declineHiddenPassage()">NO, PROSEGUI</button></div></div>`);
+    const floor = Math.max(1, Number(PKM_RUN.floor) || 1);
+    const candidates = Object.values(PKM_DB).filter(pokemon => pokemon?.immagine && Number(pokemon.stage || 1) <= Math.min(3, Math.max(1, floor)));
+    const base = rand(candidates) || rand(Object.values(PKM_DB).filter(pokemon => pokemon?.immagine));
+    if(!base) return declineHiddenPassage();
+    const friend = rand(candidates.filter(pokemon => Number(pokemon.id) !== Number(base.id))) || base;
+    PKM_RUN.hiddenRescue = {
+      requester:{id:base.id,nome:base.nome,immagine:base.immagine},
+      friend:{id:friend.id,nome:friend.nome,immagine:friend.immagine,stage:Number(friend.stage)}
+    };
+    modal(`<div class="center hidden-passage-prompt hidden-passage-recruit"><span>❓ PASSAGGIO NASCOSTO</span><img src="${sprite(base.immagine)}" alt="${base.nome}"><h2>${base.nome} chiede soccorso</h2><p>Il suo amico <b>${friend.nome}</b> è bloccato più avanti. Vuoi attraversare il mini-dungeon per aiutarlo?</p><div><button type="button" onclick="enterHiddenPassage()">✓ ANDIAMO</button><button type="button" onclick="declineHiddenPassage()">PROSEGUI</button></div></div>`);
     return true;
   };
 
@@ -2438,7 +2453,7 @@ PokeMisteryRL.Progress = (() => {
     busy = 0;
     closeModal();
     PokeMisteryRL.UI.render();
-    msg("Hai attraversato il passaggio nascosto.");
+    msg("Inizia il soccorso: raggiungi il boss alla fine del passaggio.");
     return true;
   };
 
@@ -2487,7 +2502,8 @@ PokeMisteryRL.Progress = (() => {
     // In Campagna il ? apre una deviazione opzionale; in Avventura resta l'imboscata.
     if(real.type === "event"){
       if(isTest2Mode()){
-        openTollEvent(real);
+        if(real.eventKind === "toll") openTollEvent(real);
+        else openHiddenPassage();
         return;
       }
       if(isCampaignMode()){
@@ -2537,12 +2553,36 @@ PokeMisteryRL.Progress = (() => {
     // L'ultimo scontro del passaggio riporta esattamente al nodo ? di origine.
     if(PKM_RUN.extraPassage && current.row === PKM_RUN.map.length - 1 && current.done){
       const passage = PKM_RUN.extraPassage;
+      const rescue = PKM_RUN.hiddenRescue;
+      const rescueReward = 150;
+      const rewardPool = Object.values(window.PokeMisteryRL_Items?.DB_ITEMS || window.DB_ITEMS || {}).filter(item => item?.id);
+      const rescueItem = rand(rewardPool);
+      PKM_RUN.bits = Number(PKM_RUN.bits || 0) + rescueReward;
+      if(rescueItem){
+        if(!Array.isArray(PKM_RUN.items)) PKM_RUN.items = [];
+        const owned = PKM_RUN.items.find(entry => String(entry?.id || entry) === String(rescueItem.id));
+        if(owned) owned.qty = Math.max(0, Number(owned.qty) || 0) + 1;
+        else PKM_RUN.items.push({id:rescueItem.id,qty:1});
+      }
       PKM_RUN.map = passage.returnMap;
       PKM_RUN.row = passage.returnRow;
       PKM_RUN.col = passage.returnCol;
       PKM_RUN.lastDoneId = passage.returnLastDoneId;
       delete PKM_RUN.extraPassage;
-      next("Sei tornato dal passaggio nascosto.");
+      delete PKM_RUN.hiddenRescue;
+      next();
+      if(isTest2Mode()){
+        const bottom = $("bottomCampagna");
+        const map = $("map");
+        if(bottom){
+          bottom.querySelector(".test2-rescue-reward-scene")?.remove();
+          bottom.insertAdjacentHTML("beforeend", `<div class="test2-rescue-reward-scene"><img class="test2-rescue-mon rescue-mon-1" src="${sprite(rescue?.requester?.immagine)}" alt="${rescue?.requester?.nome || "Pokémon"}"><img class="test2-rescue-mon rescue-mon-2" src="${sprite(rescue?.friend?.immagine)}" alt="${rescue?.friend?.nome || "Pokémon"}">${rescueItem ? `<div class="test2-rescue-item"><img src="${rescueItem.immagine || ""}" alt="${rescueItem.nome}"><span>PREMIO</span></div>` : ""}</div>`);
+        }
+        if(map){
+          map.className = "test2-rescue-reward-map";
+          map.innerHTML = `<section class="test2-rescue-reward-panel"><span>✨ SOCCORSO RIUSCITO</span><h2>${rescue?.requester?.nome || "Il Pokémon"} e ${rescue?.friend?.nome || "il suo amico"} sono salvi!</h2><div class="test2-rescue-summary"><p><small>SOLDI</small><b>+${rescueReward}¥</b></p>${rescueItem ? `<p><small>OGGETTO OTTENUTO</small><span><img src="${rescueItem.immagine || ""}" alt="">${rescueItem.nome}</span></p>` : ""}</div><button type="button" onclick="closeHiddenRescueReward()">CONTINUA</button></section>`;
+        }
+      }
       return;
     }
     const afterBattleNodeType = PKM_RUN.afterBattleNodeType;
@@ -2614,6 +2654,12 @@ window.acceptSkillChallenge = PokeMisteryRL.Progress.acceptSkillChallenge;
 window.rejectSkillChallenge = PokeMisteryRL.Progress.rejectSkillChallenge;
 window.enterHiddenPassage = PokeMisteryRL.Progress.enterHiddenPassage;
 window.declineHiddenPassage = PokeMisteryRL.Progress.declineHiddenPassage;
+window.closeHiddenRescueReward = () => {
+  $("bottomCampagna")?.querySelector(".test2-rescue-reward-scene")?.remove();
+  const map = $("map");
+  if(map){ map.className = ""; map.innerHTML = ""; }
+  PokeMisteryRL.UI?.render?.();
+};
 window.payTollEvent = PokeMisteryRL.Progress.payTollEvent;
 window.refuseTollEvent = PokeMisteryRL.Progress.refuseTollEvent;
 // #endregion
@@ -3585,11 +3631,8 @@ PokeMisteryRL.Battle = (() => {
       Number(PKM_RUN?.activePokemon?.level) ||
       minLevel
     );
-    const encounterLevel = isShelterFight
-      ? companionLevel
-      : isBoss
-        ? Math.max(1, Number(floorLevels?.bossLevel) || maxLevel)
-        : minLevel + Math.floor(Math.random() * (maxLevel - minLevel + 1));
+    // Ogni avversario usa LV 1: fight, dojo, Kecleon, eventi e boss.
+    const encounterLevel = 1;
 
     return {
 
@@ -5296,12 +5339,17 @@ PokeMisteryRL.UI = (() => {
 
   const buildTest2FormationTemplate = () => {
     const scene = getTest2BottomScene();
-    const order = [PKM_RUN?.activePokemon, PKM_RUN?.secondActive, PKM_RUN?.teamSlots?.[0]];
+    // L'ordine dei box replica quello nello scenario: sinistra, alto, fronte.
+    const order = [
+      {pokemon:PKM_RUN?.teamSlots?.[0], slotIndex:2},
+      {pokemon:PKM_RUN?.activePokemon, slotIndex:0},
+      {pokemon:PKM_RUN?.secondActive, slotIndex:1}
+    ];
     const selected = Number(PKM_RUN?.test2FormationPick);
     return `
     <div id="bottomCampagna" class="bottom-campagna" data-scene="${scene}" aria-label="Formazione squadra">
       <span class="bottom-campagna-title">SQUADRA</span>
-      <nav class="test2-formation-order" aria-label="Cambia ordine squadra"><small>FORMAZIONE</small>${order.map((pokemon,index) => pokemon ? `<button type="button" class="${selected === index ? "selected" : ""}" draggable="true" ondragstart="PokeMisteryRL.UI.dragTest2FormationSlot(event,${index})" ondragover="PokeMisteryRL.UI.allowTest2FormationDrop(event)" ondrop="PokeMisteryRL.UI.dropTest2FormationSlot(event,${index})" onclick="PokeMisteryRL.UI.selectTest2FormationSlot(${index})" title="${pokemon.nome}: trascina o clicca per cambiare posizione"><img src="${sprite(pokemon.immagine)}" alt=""><b>S${index + 1}</b></button>` : "").join("")}</nav>
+      <nav class="test2-formation-order" aria-label="Cambia ordine squadra"><small>SQUADRA</small>${order.map(({pokemon,slotIndex},index) => pokemon ? `<button type="button" class="formation-slot-s${index + 1} ${selected === slotIndex ? "selected" : ""}" draggable="true" ondragstart="PokeMisteryRL.UI.dragTest2FormationSlot(event,${slotIndex})" ondragover="PokeMisteryRL.UI.allowTest2FormationDrop(event)" ondrop="PokeMisteryRL.UI.dropTest2FormationSlot(event,${slotIndex})" onclick="PokeMisteryRL.UI.selectTest2FormationSlot(${slotIndex})" title="${pokemon.nome} · LV ${pokemon.level || 1}: trascina o clicca per cambiare posizione"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>S${index + 1}</span><em>LV ${pokemon.level || 1}</em></button>` : "").join("")}</nav>
       ${scene === "bazar" ? `<img class="test2-kecleon" src="${sprite("kecleon.png")}" alt="Kecleon">` : ""}
       <div id="test2FormationLine" class="bottom-campagna-formation"></div>
       ${buildTest2UtilityBar()}
@@ -5480,6 +5528,18 @@ PokeMisteryRL.UI = (() => {
       const test2BitsReadout = $('test2BitsReadout');
       if(test2FloorReadout) test2FloorReadout.textContent = PKM_RUN.extraPassage ? 'PASSAGGIO' : `PIANO ${PKM_RUN.floor || 1}`;
       if(test2BitsReadout) test2BitsReadout.textContent = Number(PKM_RUN.bits) || 0;
+      // I box superiori sono la fonte visiva dell'ordine: dopo ogni scambio
+      // ricostruiscili con gli sprite effettivamente assegnati a S1/S2/S3.
+      const formationOrder = test2Bottom?.querySelector('.test2-formation-order');
+      if(formationOrder){
+        const order = [
+          {pokemon:PKM_RUN.teamSlots?.[0], slotIndex:2},
+          {pokemon:PKM_RUN.activePokemon, slotIndex:0},
+          {pokemon:PKM_RUN.secondActive, slotIndex:1}
+        ];
+        const selected = Number(PKM_RUN.test2FormationPick);
+        formationOrder.innerHTML = `<small>SQUADRA</small>${order.map(({pokemon,slotIndex},index) => pokemon ? `<button type="button" class="formation-slot-s${index + 1} ${selected === slotIndex ? "selected" : ""}" draggable="true" ondragstart="PokeMisteryRL.UI.dragTest2FormationSlot(event,${slotIndex})" ondragover="PokeMisteryRL.UI.allowTest2FormationDrop(event)" ondrop="PokeMisteryRL.UI.dropTest2FormationSlot(event,${slotIndex})" onclick="PokeMisteryRL.UI.selectTest2FormationSlot(${slotIndex})" title="${pokemon.nome} · LV ${pokemon.level || 1}: trascina o clicca per cambiare posizione"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>S${index + 1}</span><em>LV ${pokemon.level || 1}</em></button>` : "").join("")}`;
+      }
       const formation = $('test2FormationLine');
       const slots = PKM_RUN.teamSlots || [];
       const roster = [
