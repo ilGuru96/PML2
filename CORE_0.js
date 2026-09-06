@@ -2570,6 +2570,14 @@ PokeMisteryRL.Progress = (() => {
   };
   const startBoss1Challenge = () => {
     $("bottomCampagna")?.querySelectorAll(".test2-boss1-group").forEach(entry => entry.remove());
+    // L'introduzione occupa temporaneamente la mappa: appena si accetta,
+    // riportiamo il box alla mappa reale prima di mostrare il combattimento.
+    const map = $("map");
+    if(map){
+      map.className = "";
+      map.replaceChildren();
+    }
+    PokeMisteryRL.UI?.renderMap?.();
     fight(true);
     return true;
   };
