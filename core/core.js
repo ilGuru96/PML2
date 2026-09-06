@@ -5,6 +5,7 @@
 
 const PokeMisteryRL = {};
 window.PokeMisteryRL = PokeMisteryRL;
+const BossWaves = window.PokeMisteryRL_BossWaves;
 // #region 01 - CONFIGURAZIONE + GLOBALI
 PokeMisteryRL.Config = (() => {
   const SPRITE_BASE_URL = "https://cdn.jsdelivr.net/gh/ilGuru96/spritemon/";
@@ -506,7 +507,7 @@ const { getPokemonTypes, getTypeMultiplier, getMultLabel, getTypingBadge } = Pok
 PokeMisteryRL.Database = (() => {
   const PKM_DB = {};
   const POKEAPI_BASE = "https://pokeapi.co/api/v2";
-  const POKEAPI_CACHE_KEY = "pokeMisteryRL.pokeapi.kanto.v1";
+  const POKEAPI_CACHE_KEY = "pokeMisteryRL.pokeapi.all-species.v1";
   const italianType = {
     normal:"normale", fire:"fuoco", water:"acqua", electric:"elettro",
     grass:"erba", ice:"ghiaccio", fighting:"lotta", poison:"veleno",
@@ -749,6 +750,54 @@ PokeMisteryRL.Database = (() => {
     return window.__pokeApiInitialPromise;
   };
 
+  // Catalogo completo delle specie PokéAPI. Il primo avvio mantiene il
+  // caricamento rapido dei 151 iniziali; tutte le altre specie arrivano poi
+  // in background, vengono salvate nella cache e diventano subito selezionabili
+  // per starter, compagni e pool casuali della run successiva.
+  const loadPokeApiCompleteDatabase = async () => {
+    if(window.__pokeApiCompletePromise) return window.__pokeApiCompletePromise;
+    window.__pokeApiCompletePromise = (async () => {
+      const cache = readLiveCache();
+      let catalog = [];
+      try {
+        const response = await fetch(`${POKEAPI_BASE}/pokemon-species?limit=100000`);
+        if(!response.ok) return PKM_DB;
+        const data = await response.json();
+        catalog = Array.isArray(data?.results) ? data.results : [];
+      } catch(_) { return PKM_DB; }
+
+      let changed = false;
+      for(let start = 0; start < catalog.length; start += 8){
+        const group = catalog.slice(start, start + 8);
+        await Promise.all(group.map(async species => {
+          const id = idFromApiUrl(species?.url);
+          if(!id) return;
+          let data = cache[id]?.data || null;
+          try {
+            if(!data){
+              const response = await fetch(`${POKEAPI_BASE}/pokemon/${encodeURIComponent(species.name)}`);
+              if(!response.ok) return;
+              data = await response.json();
+              cache[id] = { savedAt:Date.now(), data };
+            }
+            if(!PKM_DB[id] && seedLivePokemon(data)) changed = true;
+            else if(PKM_DB[id] && applyLivePokemon(data)) changed = true;
+          } catch(_) { /* la cache e le specie già caricate restano valide */ }
+        }));
+        // Lascia respirare UI e rete mentre completa il catalogo una volta sola.
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      writeLiveCache(cache);
+      window.__pokeApiCompleteReady = true;
+      if(changed){
+        window.dispatchEvent(new CustomEvent("pokeapi:catalog-ready"));
+        if(PKM_RUN && !PKM_RUN.battle) PokeMisteryRL.UI?.render?.();
+      }
+      return PKM_DB;
+    })();
+    return window.__pokeApiCompletePromise;
+  };
+
   const getPokeApiItem = async id => {
     const response = await fetch(`${POKEAPI_BASE}/item/${encodeURIComponent(String(id))}`);
     if(!response.ok) throw new Error("Oggetto PokéAPI non trovato");
@@ -761,9 +810,9 @@ PokeMisteryRL.Database = (() => {
     return response.json();
   };
 
-  loadPokeApiInitialDatabase();
+  loadPokeApiInitialDatabase().then(() => loadPokeApiCompleteDatabase());
 
-  return { PKM_DB, buildPokemonDB, getPokemon, getPokemonId, loadPokeApiInitialDatabase, loadPokeApiLiveDatabase, getPokeApiItem, getPokeApiMove };
+  return { PKM_DB, buildPokemonDB, getPokemon, getPokemonId, loadPokeApiInitialDatabase, loadPokeApiLiveDatabase, loadPokeApiCompleteDatabase, getPokeApiItem, getPokeApiMove };
 })();
 
 const { PKM_DB, buildPokemonDB, getPokemon, getPokemonId } = PokeMisteryRL.Database;
@@ -905,33 +954,32 @@ const createRunState = (starter) => ({
     msg(`${starter.nome} pronto! ${rolls}`);
   };
   const quickReset = () => { if(busy) return; startPokemon(PKM_RUN?.originPokemon, PKM_RUN?.mode||"torre"); };
-  // Testi raccolti in un unico oggetto: ogni chiave potrà ricevere una
-  // traduzione senza cambiare markup, layout o logica della guida.
-  const GUIDE_COPY = {
-    it: {
-      guide:"GUIDA", choose:"Scegli un argomento", combat:"Combattimento", team:"Squadra", map:"Percorso",
-      targeting:"Bersagli", turns:"Turni", formation:"Formazione", health:"Vita", nodes:"Nodi",
-      targetingTitle:"Priorità dei bersagli", targetingText:"I tre slot squadra cercano avversari con una priorità fissa. Gli avversari, invece, scelgono casualmente uno dei tre slot squadra ancora vivi.",
-      turnsTitle:"Come funziona un turno", turnsText:"Tutti i Pokémon vivi agiscono una volta. La Velocità decide chi parte prima; un Pokémon KO non può più attaccare.",
-      formationTitle:"Posizioni squadra", formationText:"I tre slot sono alto, davanti e basso. Puoi trascinare gli sprite nella barra squadra per cambiare l'ordine prima del nodo successivo.",
-      healthTitle:"Barre vita", healthText:"La barra sotto ogni Pokémon mostra i suoi PS attuali. A zero PS il Pokémon è KO e non agisce fino a una cura.",
-      nodesTitle:"Tipi di nodo", nodesText:"Scegli solo nodi collegati al percorso illuminato. Ogni scelta chiude il nodo attuale e apre il successivo."
-    }
-  };
+  // Le copie della guida vivono in outputs/texts.js: qui resta soltanto la struttura.
+  const GUIDE_COPY = window.PokeMisteryRL_GuideCopy || { it:{} };
   const guideText = key => GUIDE_COPY.it[key] || key;
-  const guideBackButton = action => `<button type="button" class="guide-back" onclick="${action}">← INDIETRO</button>`;
+  const GUIDE_SECTIONS = {
+    basics: ["start", "levels"],
+    combat: ["targeting", "turns", "moves"],
+    team: ["formation", "health", "items"],
+    route: ["nodes", "shelter", "shop", "events"]
+  };
+  const GUIDE_ICONS = { basics:"✦", combat:"⚔", team:"◈", route:"⌘" };
+  const guideBackButton = action => `<button type="button" class="guide-back" onclick="${action}">${guideText("back")}</button>`;
+  const guideTargetVisual = `<div class="guide-target-visual" aria-label="Schema priorità bersagli"><div class="guide-allies"><i>S3</i><i>S2</i><i>S1</i></div><b>VS</b><div class="guide-enemies"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i></div></div><ol class="guide-priority"><li><span>S3</span>Primo nemico libero</li><li><span>S2</span>Secondo nemico libero</li><li><span>S1</span>Terzo nemico libero</li><li><span>?</span>Nemici: bersaglio casuale</li></ol>`;
+  const guideNodeVisual = `<ul class="guide-priority guide-node-list"><li><span>⚔</span><b>Fight</b><small>KO normali = +1 livello.</small></li><li><span>♥</span><b>Rifugio</b><small>Cura e cambio tipo mossa.</small></li><li><span>🏪</span><b>Shop</b><small>Oggetti e scaffali persistenti.</small></li><li><span>🥋</span><b>Dojo</b><small>Potenzia una mossa.</small></li><li><span>?</span><b>Evento</b><small>Scelta, aiuto o ricompensa.</small></li><li><span>👹</span><b>Boss</b><small>Chiude il piano.</small></li></ul>`;
   const openGuidePage = (category, page) => {
     const title = guideText(`${page}Title`);
     const text = guideText(`${page}Text`);
-    const visual = page === "targeting" ? `<div class="guide-target-visual" aria-label="Schema priorità bersagli"><div class="guide-allies"><i title="slot alto">▲</i><i title="slot davanti">●</i><i title="slot basso">▼</i></div><b>VS</b><div class="guide-enemies"><i>●</i><i>●</i><i>●</i><i>●</i><i>●</i><i>●</i></div></div><ol class="guide-priority"><li><span>▼</span> Slot basso → primo avversario libero</li><li><span>▲</span> Slot alto → secondo avversario libero</li><li><span>●</span> Slot davanti → terzo avversario libero</li><li><span>↔</span> Ogni avversario sceglie casualmente uno slot squadra vivo</li></ol>` : page === "nodes" ? `<ul class="guide-priority guide-node-list"><li><span>⚔</span><b>Fight</b> · Combattimento normale: vincendo ottieni soldi, esperienza e possibili ricompense.</li><li><span>👹</span><b>Boss</b> · Scontro più importante del percorso. Il Boss 1 è una scelta iniziale; il Boss finale chiude il piano.</li><li><span>♥</span><b>Rifugio</b> · Tutta la squadra recupera il 50% dei PS massimi, fino al 100%. Un KO torna al 50%. Puoi affrontare la sfida per 2 oggetti curativi oppure cambiare il tipo della skill attiva pagando 100 monete.</li><li><span>🏪</span><b>Shop</b> · Compra oggetti e potenziamenti con le monete raccolte.</li><li><span>🥋</span><b>Skill / Dojo</b> · Accetta una sfida per ricevere un potenziamento skill o un oggetto tipo.</li><li><span>?</span><b>Evento</b> · Evento casuale: può offrire un bonus, una scelta rischiosa o un malus.</li></ul>` : "";
-    modal(`<section class="center guide-panel"><header><span>${guideText(category)}</span><h2>${title}</h2></header>${visual}<p>${text}</p>${guideBackButton(`openGuideCategory('${category}')`)}</section>`);
+    const visual = page === "targeting" ? guideTargetVisual : page === "nodes" ? guideNodeVisual : "";
+    modal(`<section class="center guide-panel guide-detail"><header><span>${GUIDE_ICONS[category]} ${guideText(category)}</span><h2>${title}</h2></header><div class="guide-copy">${visual}<p>${text}</p></div>${guideBackButton(`openGuideCategory('${category}')`)}</section>`);
   };
   const openGuideCategory = category => {
-    const pages = category === "combat" ? ["targeting", "turns"] : category === "team" ? ["formation", "health"] : ["nodes"];
-    modal(`<section class="center guide-panel guide-category"><header><span>${guideText("guide")}</span><h2>${guideText(category)}</h2></header><div class="guide-page-list">${pages.map(page => `<button type="button" onclick="openGuidePage('${category}','${page}')"><b>${guideText(page)}</b><small>${guideText(`${page}Title`)}</small><i>›</i></button>`).join("")}</div>${guideBackButton("openGuideMenu()")}</section>`);
+    const pages = GUIDE_SECTIONS[category] || [];
+    modal(`<section class="center guide-panel guide-category"><header><span>${GUIDE_ICONS[category]} ${guideText("guide")}</span><h2>${guideText(category)}</h2></header><div class="guide-page-list">${pages.map((page,index) => `<button type="button" onclick="openGuidePage('${category}','${page}')"><i>${String(index + 1).padStart(2,"0")}</i><span><b>${guideText(page)}</b><small>${guideText(`${page}Title`)}</small></span><em>›</em></button>`).join("")}</div>${guideBackButton("openGuideMenu()")}</section>`);
   };
   const openGuideMenu = () => {
-    modal(`<section class="center guide-panel guide-home"><header><span>${guideText("guide")}</span><h2>${guideText("choose")}</h2></header><div class="guide-category-list"><button type="button" onclick="openGuideCategory('combat')"><i>⚔</i><b>${guideText("combat")}</b><small>Bersagli e turni</small></button><button type="button" onclick="openGuideCategory('team')"><i>◈</i><b>${guideText("team")}</b><small>Slot e vita</small></button><button type="button" onclick="openGuideCategory('map')"><i>⌘</i><b>${guideText("map")}</b><small>Nodi e scelte</small></button></div>${guideBackButton("openHomeMenu()")}</section>`);
+    const categories = ["basics", "combat", "team", "route"];
+    modal(`<section class="center guide-panel guide-home"><header><span>✦ ${guideText("guide")}</span><h2>${guideText("choose")}</h2></header><div class="guide-category-list">${categories.map(category => `<button type="button" onclick="openGuideCategory('${category}')"><i>${GUIDE_ICONS[category]}</i><span><b>${guideText(category)}</b><small>${guideText(`${category}Hint`)}</small></span><em>›</em></button>`).join("")}</div>${guideBackButton("openHomeMenu()")}</section>`);
   };
   const showBattleGuide = openGuideMenu;
   const openHomeMenu = () => {
@@ -1994,27 +2042,24 @@ PokeMisteryRL.Map = (() => {
     PKM_RUN.floorChallenges = {};
     PKM_RUN.floorChallengeDone = {};
 
-    // Test2 conserva la sequenza delle colonne, ma Skill e Negozio pescano
-    // casualmente una riga della propria colonna: un solo nodo speciale per
-    // colonna, mai vincolato alla terza riga.
+    // Percorso core: otto righe fisse e scelte leggibili. Le feature esterne
+    // possono aggiungere nodi propri, ma non alterano questa struttura base.
     const test2NodeTypes = isTest2Mode() ? layout.map(count => Array(count).fill("fight")) : null;
     if(test2NodeTypes){
-      test2NodeTypes[0][0] = "free";
-      // La seconda riga contiene sempre Boss 2. Boss 1 è invece il guardiano
-      // conclusivo, esclusivamente al piano 3.
-      test2NodeTypes[1][Math.floor(Math.random() * layout[1])] = "boss2";
-      // L'altra scelta della seconda riga è sempre il Rifugio di Chansey.
-      test2NodeTypes[1][test2NodeTypes[1].findIndex(type => type !== "boss2")] = "rifugio";
-      test2NodeTypes[layout.length - 1][0] = Number(PKM_RUN.floor) === 3 ? "boss1" : "boss";
-      // Colonna 5: una Skill casuale + Fight. Colonna 6: soltanto Fight.
-      [[2,"skill"],[3,"shop"],[4,"skill"]].forEach(([row,type]) => {
-        const count = layout[row] || 0;
-        if(count) test2NodeTypes[row][Math.floor(Math.random() * count)] = type;
-      });
-      // Un solo branco per run: sostituisce un Fight, mai un servizio o il boss.
-      const tollCandidates = [5].filter(row => (layout[row] || 0) > 0);
-      const tollRow = rand(tollCandidates);
-      if(tollRow != null) test2NodeTypes[tollRow][Math.floor(Math.random() * layout[tollRow])] = "event";
+      const choose = choices => choices[Math.floor(Math.random() * choices.length)];
+      // Piano 1: scelta della coppia. Dai piani successivi: negozio iniziale.
+      test2NodeTypes[0][0] = Number(PKM_RUN.floor) === 1 ? "free" : "shop";
+      // Righe 2, 3, 5 e 6: soltanto le alternative indicate nel percorso.
+      test2NodeTypes[1] = test2NodeTypes[1].map(() => choose(["fight", "event"]));
+      test2NodeTypes[2] = test2NodeTypes[2].map(() => choose(["fight", "event", "skill"]));
+      // Riga 4: un Negozio fisso fra tre nodi, gli altri due sono Fight.
+      test2NodeTypes[3].fill("fight");
+      test2NodeTypes[3][Math.floor(Math.random() * test2NodeTypes[3].length)] = "shop";
+      test2NodeTypes[4] = test2NodeTypes[4].map(() => choose(["fight", "event", "skill"]));
+      test2NodeTypes[5] = test2NodeTypes[5].map(() => choose(["fight", "event"]));
+      // Riga 7: doppio Rifugio. Riga 8: boss standard del core.
+      test2NodeTypes[6].fill("rifugio");
+      test2NodeTypes[layout.length - 1][0] = "boss";
     }
     // Le altre modalità mantengono la distribuzione precedente.
     const dojoCandidates = [];
@@ -2068,48 +2113,30 @@ PokeMisteryRL.Map = (() => {
 
         // Per ogni nodo fight/boss scegliamo subito il Pokémon da mostrare.
         // Usiamo solo PKM_DB, che è già disponibile nel CORE.
-        if(type === "fight" || type === "boss" || type === "boss1" || type === "boss2"){
+        if(type === "fight" || BossWaves.isBossType(type)){
 
           const enemyStage =
-            (type === "boss" || type === "boss1" || type === "boss2")
+            BossWaves.isBossType(type)
               ? (PKM_RUN.floor < 3 ? 1 : PKM_RUN.floor < 6 ? 2 : 3)
               : (PKM_RUN.floor < 2 ? 1 : PKM_RUN.floor < 5 ? 2 : 3);
 
-          const candidates = (type === "boss" || type === "boss1" || type === "boss2")
+          const candidates = BossWaves.isBossType(type)
             ? getBossEncounter(floorData, enemyStage)
             : getFloorCandidates(floorData, false, enemyStage);
 
           const preview = p => ({ id:p.id, nome:p.nome, immagine:p.immagine, stage:Number(p.stage) });
           if(candidates.length){
-            if(type === "boss" || type === "boss1" || type === "boss2"){
+            if(BossWaves.isBossType(type)){
               node.enemyPreview = preview(candidates[0]);
               node.enemyPreviews = candidates.map(preview);
             }else{
               node.enemyPreview = preview(rand(candidates));
             }
           }
-          // Boss 1 è sempre il branco larvale: sei Pokémon distribuiti in
-          // tre ondate da due, indipendentemente dal piano corrente.
-          if(type === "boss1"){
-            const larvae = Object.values(PKM_DB).filter(p => ["weedle", "caterpie"].includes(String(p.nome || "").toLowerCase()));
-            if(larvae.length){
-              node.enemyPreviews = Array.from({length:6}, (_, index) => preview(larvae[index % larvae.length]));
-              node.enemyPreview = node.enemyPreviews[0];
-            }
-          }
-          // Boss 2 affronta dodici Pokémon: sei larve e sei evoluzioni,
-          // distribuiti in tre ondate da quattro.
-          if(type === "boss2"){
-            const byName = name => Object.values(PKM_DB).find(p => String(p.nome || "").toLowerCase() === name);
-            const sequence = [
-              "weedle", "caterpie", "weedle", "caterpie", "weedle", "caterpie",
-              "kakuna", "metapod", "kakuna", "metapod", "kakuna", "metapod"
-            ]
-              .map(byName).filter(Boolean);
-            if(sequence.length === 12){
-              node.enemyPreviews = sequence.map(preview);
-              node.enemyPreview = node.enemyPreviews[0];
-            }
+          const wavePreviews = BossWaves.buildPreviews(PKM_DB, type, preview);
+          if(wavePreviews.length){
+            node.enemyPreviews = wavePreviews;
+            node.enemyPreview = wavePreviews[0];
           }
         }
 
@@ -2285,6 +2312,16 @@ PokeMisteryRL.Map = (() => {
   return { buildMap, buildExtraPassageMap, drawMapLines, applyModeMapBackground };
 })();
 PokeMisteryRL.Progress = (() => {
+  // Stato autoritativo della scelta iniziale: non si fida mai del DOM.
+  const armStartSelection = (phase, offers, nodeId = null) => {
+    if(!PKM_RUN) return null;
+    const token = (Number(PKM_RUN.startSelection?.token) || 0) + 1;
+    return PKM_RUN.startSelection = { phase, offers, nodeId, locked:false, token };
+  };
+  const isStartSelection = phase => {
+    const selection = PKM_RUN?.startSelection;
+    return !!selection && selection.phase === phase && !selection.locked;
+  };
   const openStartingStarterChoice = () => {
     if(!isTest2Mode() || !PKM_RUN) return false;
     const map = $("map");
@@ -2300,13 +2337,22 @@ PokeMisteryRL.Progress = (() => {
     }
     const choices = PKM_RUN.startingStarterChoices.map(id => PKM_DB[id]).filter(Boolean);
     map.className = "test2-starter-choice-map";
-    map.innerHTML = `<section class="test2-starter-choice-panel"><span>⭐ SCEGLI LO STARTER</span><p>Livello 90 · entrerà nello slot S3.</p><div>${choices.map(pokemon => `<button type="button" onclick="chooseCampaignStarter(${Number(pokemon.id)})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b><small>LV 90</small></button>`).join("")}</div></section>`;
+    if(!choices.length) return false;
+    armStartSelection("starter", choices.map(pokemon => Number(pokemon.id)));
+    const bottom = $("bottomContainer");
+    if(bottom){
+      bottom.innerHTML = `<section id="test2StarterPreview" class="test2-starter-preview" aria-label="Candidati starter"><span class="test2-starter-scene-label">SQUADRA</span><nav class="test2-utility-bar" aria-label="Comandi run"><span class="test2-utility-money">💰 <b>${Number(PKM_RUN?.bits) || 0}</b></span><button type="button" onclick="openHomeMenu()" aria-label="Menu">☰</button><button type="button" onclick="quickReset()" aria-label="Ricomincia">↻</button><button type="button" onclick="toggleInventory()" aria-label="Zaino">🎒</button></nav><div>${choices.map(pokemon => `<article><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b><em>${(pokemon.tipi || []).map(getTypingBadge).join("")}</em><i><small>HP</small><u></u></i></article>`).join("")}</div></section>`;
+    }
+    map.innerHTML = `<section class="test2-starter-choice-panel" aria-label="Scegli uno starter"><header><span>⭐ SCEGLI LO STARTER</span><small>Scegli uno dei cinque Pokémon della scena.</small></header><div>${choices.map(pokemon => `<button type="button" data-start-choice="starter" data-starter-id="${Number(pokemon.id)}" onclick="chooseCampaignStarter(${Number(pokemon.id)})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"></button>`).join("")}</div></section>`;
     return true;
   };
   const chooseStartingStarter = id => {
     if(!isTest2Mode() || !PKM_RUN) return false;
-    const starter = createPokemonInstance(id);
-    if(!starter) return false;
+    const selectedId = Number(id);
+    if(!isStartSelection("starter") || !PKM_RUN.startSelection.offers.includes(selectedId)) return false;
+    PKM_RUN.startSelection.locked = true;
+    const starter = createPokemonInstance(selectedId);
+    if(!starter){ PKM_RUN.startSelection.locked = false; return false; }
     starter.level = 90;
     starter.sk = Math.max(1, Number(starter.sk) || 1);
     PokeMisteryRL_LevelSystem?.rebuildBaseStats?.(starter);
@@ -2322,6 +2368,7 @@ PokeMisteryRL.Progress = (() => {
     PKM_RUN.hp = starter.hp;
     PKM_RUN.maxHp = starter.maxHp;
     PKM_RUN.starterChosen = true;
+    PKM_RUN.startSelection = { phase:"awaiting-partners", offers:[], locked:true, token:PKM_RUN.startSelection.token };
     busy = 0;
     PokeMisteryRL.UI.refreshBottomPanel?.();
     const map = $("map");
@@ -2348,8 +2395,9 @@ PokeMisteryRL.Progress = (() => {
     const choices = node.startingPartnerPairs
       .map(pair => pair.map(id => PKM_DB[id]).filter(Boolean))
       .filter(pair => pair.length === 2);
-    if(!choices.length){ next(); return; }
-    const choiceMarkup = `<section class="test2-companion-choice-panel"><span>⭐ SCEGLI I COMPAGNI</span><p>Scegli una coppia: entrambi entrano in squadra al livello 90.</p><div>${choices.map(pair => `<button type="button" onclick="chooseStartingPair(${Number(pair[0].id)},${Number(pair[1].id)})"><span><img src="${sprite(pair[0].immagine)}" alt="${pair[0].nome}"><img src="${sprite(pair[1].immagine)}" alt="${pair[1].nome}"></span><b>${pair[0].nome} + ${pair[1].nome}</b><small>LV 90 · LV 90</small></button>`).join("")}</div></section>`;
+    if(!choices.length) return false;
+    armStartSelection("companions", choices.map(pair => pair.map(pokemon => Number(pokemon.id))), node.id);
+    const choiceMarkup = `<section class="test2-companion-choice-panel"><span>⭐ SCEGLI I COMPAGNI</span><p>Scegli una coppia: entrambi entrano in squadra al livello 90.</p><div>${choices.map(pair => `<button type="button" data-start-choice="companions" data-first-id="${Number(pair[0].id)}" data-second-id="${Number(pair[1].id)}" onclick="chooseStartingPair(${Number(pair[0].id)},${Number(pair[1].id)})"><span><img src="${sprite(pair[0].immagine)}" alt="${pair[0].nome}"><img src="${sprite(pair[1].immagine)}" alt="${pair[1].nome}"></span><b>${pair[0].nome} + ${pair[1].nome}</b><small>LV 90 · LV 90</small></button>`).join("")}</div></section>`;
     if(isTest2Mode()){
       const map = $("map");
       if(map){
@@ -2363,8 +2411,13 @@ PokeMisteryRL.Progress = (() => {
 
   const chooseStartingPair = (firstId, secondId) => {
     if(!PKM_RUN) return false;
-    const partners = [firstId, secondId].map(createPokemonInstance).filter(Boolean);
-    if(partners.length !== 2) return false;
+    const first = Number(firstId), second = Number(secondId);
+    if(!isStartSelection("companions")) return false;
+    const offered = PKM_RUN.startSelection.offers.some(pair => pair[0] === first && pair[1] === second);
+    if(!offered) return false;
+    PKM_RUN.startSelection.locked = true;
+    const partners = [first, second].map(createPokemonInstance).filter(Boolean);
+    if(partners.length !== 2){ PKM_RUN.startSelection.locked = false; return false; }
     partners.forEach(partner => {
       partner.level = 90;
       partner.sk = Math.max(1, Number(partner.sk) || 1);
@@ -2378,6 +2431,7 @@ PokeMisteryRL.Progress = (() => {
     PKM_RUN.secondActive = partners[1];
     PKM_RUN.teamSlots = [starter];
     delete PKM_RUN.pendingStarter;
+    delete PKM_RUN.startSelection;
     PokeMisteryRL.UI.refreshBottomPanel();
     next(`${partners[0].nome} e ${partners[1].nome} si uniscono alla squadra.`);
     return true;
@@ -2530,57 +2584,19 @@ PokeMisteryRL.Progress = (() => {
     const reserves = (PKM_RUN?.teamSlots || []).map((pokemon, index) => ({pokemon,index})).filter(entry => entry.pokemon && Number(entry.pokemon.hp) > 0);
     modal(`<div class="center boss-prep"><span>⚠️ BOSS IN ARRIVO</span><h2>Scegli il Partner</h2><p>Puoi cambiare il compagno prima dello scontro.</p><div class="boss-prep-grid">${reserves.map(({pokemon,index}) => `<button type="button" onclick="PokeMisteryRL.Progress.chooseBossCompanion(${index})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b><small>LV ${pokemon.level || 1}</small></button>`).join("") || `<small>Nessuna riserva disponibile.</small>`}</div><button type="button" onclick="closeModal();fight(true)">MANTIENI IL PARTNER ATTUALE</button></div>`);
   };
-  const openBoss1Challenge = node => {
-    if(!isTest2Mode()) { fight(true); return; }
-    PKM_RUN.test2Scene = "tunnel";
-    PokeMisteryRL.UI.refreshBottomPanel?.();
-    const previews = node?.enemyPreviews || [];
-    const larvae = Object.values(PKM_DB).filter(pokemon => ["weedle", "caterpie"].includes(String(pokemon.nome || "").toLowerCase()));
-    const isBoss2 = node?.type === "boss2";
-    // Per Boss 2 il branco appare prima tutto larvale; dopo un istante metà
-    // degli sprite si evolve davanti al giocatore.
-    const group = isBoss2
-      ? Array.from({length:12}, (_, index) => larvae[index % larvae.length])
-      : (previews.length ? Array.from({length:12}, (_, index) => previews[index % previews.length]) : Array.from({length:12}, (_, index) => larvae[index % larvae.length]));
-    const names = [...new Set(previews.map(pokemon => pokemon.nome).filter(Boolean))].join(" + ") || "Pokémon selvatici";
-    const bottom = $("bottomCampagna");
-    bottom?.querySelectorAll(".test2-boss1-group").forEach(entry => entry.remove());
-    bottom?.insertAdjacentHTML("beforeend", `<div class="test2-boss1-group">${group.map(pokemon => `<img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">`).join("")}</div>`);
-    if(isBoss2 && bottom){
-      const evolved = previews.slice(6);
-      setTimeout(() => {
-        if(!bottom.isConnected || !bottom.querySelector(".test2-boss1-group")) return;
-        const sprites = [...bottom.querySelectorAll(".test2-boss1-group img")];
-        sprites.slice(6, 12).forEach((image, index) => {
-          const pokemon = evolved[index];
-          if(!pokemon) return;
-          image.classList.add("is-evolving");
-          image.src = sprite(pokemon.immagine);
-          image.alt = pokemon.nome;
-        });
-        bottom.insertAdjacentHTML("beforeend", `<div class="test2-evolution-flash test2-scene-evolution">EVOLUZIONE!</div>`);
-      }, 900);
-    }
-    const map = $("map");
-    if(map){
-      map.className = "test2-boss-intro-map";
-      map.innerHTML = `<section class="test2-boss-intro"><header><small>PIANO ${PKM_RUN.floor || 1}</small></header><h2>Guardiano del percorso</h2><p>Un gruppo di Pokémon blocca la strada.</p><div class="test2-boss-intro-details"><article><small>AVVERSARI</small><b>${names}</b></article></div><button type="button" onclick="startBoss1Challenge()">⚔ INIZIA LA SFIDA</button></section>`;
-    }
-    busy = 0;
-  };
-  const startBoss1Challenge = () => {
-    $("bottomCampagna")?.querySelectorAll(".test2-boss1-group").forEach(entry => entry.remove());
-    // L'introduzione occupa temporaneamente la mappa: appena si accetta,
-    // riportiamo il box alla mappa reale prima di mostrare il combattimento.
-    const map = $("map");
-    if(map){
-      map.className = "";
-      map.replaceChildren();
-    }
-    PokeMisteryRL.UI?.renderMap?.();
-    fight(true);
-    return true;
-  };
+  const bossWaveContext = () => ({
+    $,
+    db: () => PKM_DB,
+    run: () => PKM_RUN,
+    sprite,
+    isTest2Mode,
+    refreshBottom: () => PokeMisteryRL.UI?.refreshBottomPanel?.(),
+    renderMap: () => PokeMisteryRL.UI?.renderMap?.(),
+    startFight: () => fight(true),
+    release: () => { busy = 0; }
+  });
+  const openWaveBossChallenge = node => window.PokeMisteryRL_BossWaves?.open?.(node, bossWaveContext()) || fight(true);
+  const startWaveBossChallenge = () => window.PokeMisteryRL_BossWaves?.start?.(bossWaveContext()) || fight(true);
 
   const isCampaignMode = () =>
     window.PokeMisteryRL_Modes?.get?.(PKM_RUN?.mode)?.famiglia === "campagne";
@@ -2589,19 +2605,23 @@ PokeMisteryRL.Progress = (() => {
     if(!PKM_RUN) return false;
     const floor = Math.max(1, Number(PKM_RUN.floor) || 1);
     const candidates = Object.values(PKM_DB).filter(pokemon => pokemon?.immagine && Number(pokemon.stage || 1) <= Math.min(3, Math.max(1, floor)));
-    const base = rand(candidates) || rand(Object.values(PKM_DB).filter(pokemon => pokemon?.immagine));
+    const previousRescue = PKM_RUN.hiddenRescue;
+    const base = previousRescue?.requester || rand(candidates) || rand(Object.values(PKM_DB).filter(pokemon => pokemon?.immagine));
     if(!base) return declineHiddenPassage();
-    const friend = rand(candidates.filter(pokemon => Number(pokemon.id) !== Number(base.id))) || base;
+    const friend = previousRescue?.friend || rand(candidates.filter(pokemon => Number(pokemon.id) !== Number(base.id))) || base;
     PKM_RUN.hiddenRescue = {
       requester:{id:base.id,nome:base.nome,immagine:base.immagine},
       friend:{id:friend.id,nome:friend.nome,immagine:friend.immagine,stage:Number(friend.stage)}
     };
     if(isTest2Mode()){
+      PKM_RUN.hiddenRescuePrompt = true;
       PKM_RUN.test2Scene = "tunnel";
       PokeMisteryRL.UI?.refreshBottomPanel?.();
       const bottom = $("bottomCampagna");
       bottom?.querySelectorAll(".test2-rescue-request-scene").forEach(entry => entry.remove());
-      bottom?.insertAdjacentHTML("beforeend", `<div class="test2-rescue-request-scene"><img class="test2-rescue-requester" src="${sprite(base.immagine)}" alt="${base.nome}"><img class="test2-rescue-friend" src="${sprite(friend.immagine)}" alt="${friend.nome}"></div>`);
+      // Nella richiesta si vede solo chi chiede aiuto: l'amico è davvero
+      // bloccato più avanti e compare soltanto nella scena premio.
+      bottom?.insertAdjacentHTML("beforeend", `<div class="test2-rescue-request-scene"><img class="test2-rescue-requester" src="${sprite(base.immagine)}" alt="${base.nome}"></div>`);
       const map = $("map");
       if(map){
         map.className = "test2-rescue-prompt-map";
@@ -2661,6 +2681,8 @@ PokeMisteryRL.Progress = (() => {
 
   const enterHiddenPassage = () => {
     if(!PKM_RUN) return false;
+    if(isTest2Mode() && !PKM_RUN.hiddenRescuePrompt) return false;
+    delete PKM_RUN.hiddenRescuePrompt;
     PKM_RUN.extraPassage = {
       returnMap: JSON.parse(JSON.stringify(PKM_RUN.map || [])),
       returnRow: PKM_RUN.row,
@@ -2677,6 +2699,7 @@ PokeMisteryRL.Progress = (() => {
   };
 
   const declineHiddenPassage = () => {
+    delete PKM_RUN?.hiddenRescuePrompt;
     $("bottomCampagna")?.querySelectorAll(".test2-rescue-request-scene").forEach(entry => entry.remove());
     busy = 0;
     next("Hai ignorato il passaggio nascosto.");
@@ -2698,7 +2721,7 @@ PokeMisteryRL.Progress = (() => {
     PokeMisteryRL.UI.render();
     // Il nodo iniziale non è un fight: assegna subito il primo compagno S2.
     if(real.row === 0 && real.col === 0 && !PKM_RUN.secondActive){
-      openStartingPartnerChoice(real);
+      PokeMisteryRL.Progress?.openStartingPartnerChoice?.(real);
       return;
     }
     if(real.type === "rifugio"){
@@ -2741,8 +2764,8 @@ PokeMisteryRL.Progress = (() => {
     }
     // Ogni nodo non-boss prevede un combattimento. Al termine viene aperto
     // l'effetto originale del nodo (negozio, skill, rifugio...), se presente.
-    if(real.type === "boss1" || real.type === "boss2"){
-      openBoss1Challenge(real);
+    if(BossWaves.isWaveBoss(real.type)){
+      openWaveBossChallenge(real);
       return;
     }
     if(real.type === "boss"){
@@ -2764,6 +2787,16 @@ PokeMisteryRL.Progress = (() => {
     }
     if(!PKM_RUN)return;
     const current=PKM_RUN.map[PKM_RUN.row]?.[PKM_RUN.col]; if(!current)return;
+    // Gli avvertimenti di furto valgono solo durante la visita corrente.
+    // Kecleon sconfitto resta invece assente fino alla fine della run.
+    if(current.type === "shop" && !PKM_RUN.kecleonDefeated){
+      PKM_RUN.shopTheftAttempts = 0;
+      PKM_RUN.shopThefts = 0;
+      // Gli scaffali restano fissi soltanto durante la visita corrente.
+      // Uscendo, la prossima entrata genera un assortimento nuovo.
+      delete PKM_RUN.shopOffers;
+      delete PKM_RUN.lastShopOffers;
+    }
     // Lo scenario mostrato dopo il nodo è quello della scelta appena fatta,
     // non quello della prima scelta disponibile nella colonna successiva.
     if(isTest2Mode()){
@@ -2819,9 +2852,9 @@ PokeMisteryRL.Progress = (() => {
       if(afterBattleNodeType === "skill"){ skill(); return; }
       if(afterBattleNodeType === "shop"){ shop(); return; }
     }
-    // Boss 1 è il boss conclusivo del piano 3: deve avanzare di piano con
-    // la stessa identica procedura del boss classico, non restare sulla mappa.
-    if(current.type === "boss" || current.type === "boss1"){
+    // Il guardiano finale della feature usa la stessa transizione del boss
+    // classico, così la run non resta bloccata sulla mappa.
+    if(BossWaves.isFinalBoss(current.type)){
       const currentMode = window.PokeMisteryRL_Modes?.get?.(PKM_RUN.mode);
       const finalFloor = Math.max(
         1,
@@ -2837,17 +2870,21 @@ PokeMisteryRL.Progress = (() => {
       PKM_RUN.floor++;
       const a=getActivePokemon(); if(a){a.hp=a.maxHp; PKM_RUN.hp=a.maxHp;}
       PokeMisteryRL.Map.buildMap();
-      // Dai piani successivi il nodo iniziale è solo un raccordo: viene
-      // completato automaticamente e le prime tre scelte sono già attive.
+      // Dai piani successivi il primo nodo è il Negozio: deve restare
+      // selezionabile, non essere saltato come il vecchio raccordo.
       const start = PKM_RUN.map?.[0]?.[0];
       const firstChoices = PKM_RUN.map?.[1] || [];
-      if(start){
+      if(start && isTest2Mode()){
+        start.ok = true;
+        PKM_RUN.row = 0;
+        PKM_RUN.col = 0;
+      }else if(start){
         start.done=true; start.ok=false; PKM_RUN.lastDoneId=start.id;
         start.kid.forEach(c => { if(firstChoices[c]) firstChoices[c].ok=true; });
+        PKM_RUN.row=1;
+        const first = firstChoices.find(n=>n.ok);
+        PKM_RUN.col=first ? first.col : 0;
       }
-      PKM_RUN.row=1;
-      const first = firstChoices.find(n=>n.ok);
-      PKM_RUN.col=first ? first.col : 0;
     }
     else { PKM_RUN.map.forEach(r=>r.forEach(n=>n.ok=false)); const nextRow=PKM_RUN.map[PKM_RUN.row+1]; if(nextRow){ current.kid.forEach(c=>{ if(nextRow[c]) nextRow[c].ok=true; }); if(!nextRow.some(n=>n.ok)) nextRow.forEach(n=>n.ok=true); PKM_RUN.row++; const first=nextRow.find(n=>n.ok); if(first) PKM_RUN.col=first.col; } }
     if(advanceTest2MapWindow) PKM_RUN.test2MapPhase = 1;
@@ -2871,14 +2908,14 @@ PokeMisteryRL.Progress = (() => {
     PokeMisteryRL.UI.render();
     checkEvolve();
   };
-  return { pick, next, openStartingStarterChoice, chooseStartingStarter, chooseStartingPair, acceptShelterChallenge, rejectShelterChallenge, acceptSkillChallenge, rejectSkillChallenge, chooseBossCompanion, openBoss1Challenge, startBoss1Challenge, enterHiddenPassage, declineHiddenPassage, payTollEvent, refuseTollEvent };
+  return { pick, next, openStartingStarterChoice, openStartingPartnerChoice, chooseStartingStarter, chooseStartingPair, acceptShelterChallenge, rejectShelterChallenge, acceptSkillChallenge, rejectSkillChallenge, chooseBossCompanion, openWaveBossChallenge, startWaveBossChallenge, openHiddenPassage, enterHiddenPassage, declineHiddenPassage, payTollEvent, refuseTollEvent };
 })();
 const { pick, next } = PokeMisteryRL.Progress;
 window.chooseStartingStarter = PokeMisteryRL.Progress.chooseStartingStarter;
 window.chooseStartingPair = PokeMisteryRL.Progress.chooseStartingPair;
 window.acceptShelterChallenge = PokeMisteryRL.Progress.acceptShelterChallenge;
 window.rejectShelterChallenge = PokeMisteryRL.Progress.rejectShelterChallenge;
-window.startBoss1Challenge = PokeMisteryRL.Progress.startBoss1Challenge;
+window.startWaveBossChallenge = PokeMisteryRL.Progress.startWaveBossChallenge;
 window.acceptSkillChallenge = PokeMisteryRL.Progress.acceptSkillChallenge;
 window.rejectSkillChallenge = PokeMisteryRL.Progress.rejectSkillChallenge;
 window.enterHiddenPassage = PokeMisteryRL.Progress.enterHiddenPassage;
@@ -3047,7 +3084,7 @@ PokeMisteryRL.Effects = (() => {
 
     if(!selected){
       msg(
-        `Nessuna skill LV ${nextLevel} disponibile.`
+        `Nessuna mossa LV ${nextLevel} disponibile.`
       );
       return false;
     }
@@ -3243,7 +3280,7 @@ const rerollSkillTarget = (
    */
   if(currentLevel !== 3){
     msg(
-      "Il reroll è disponibile solo a SKILL LV3."
+      "Il reroll è disponibile solo a MOSSA LV3."
     );
     return false;
   }
@@ -3286,7 +3323,7 @@ const rerollSkillTarget = (
 
   if(!newSkill){
     msg(
-      "Nessuna skill LV3 disponibile."
+      "Nessuna mossa LV3 disponibile."
     );
     return false;
   }
@@ -3449,7 +3486,7 @@ const buildSkillCard = (
         </span>
 
         <em>
-          SKILL LV ${level}
+          MOSSA LV ${level}
         </em>
 
       </div>
@@ -3497,7 +3534,7 @@ const buildSkillCard = (
               ${
                 level < 3
                   ? nextName
-                  : "SKILL LV3"
+                  : "MOSSA LV3"
               }
             </strong>
 
@@ -3532,7 +3569,7 @@ const buildSkillCard = (
     const currentPower = current.pwr ?? current.power ?? "--";
     const nextPower = upcoming ? (upcoming.pwr ?? upcoming.power ?? "--") : "";
     const action = upcoming ? `onclick="upgradeSkillTarget('${target}'); next();"` : "disabled";
-    return `<button type="button" class="test2-dojo-skill-target" ${action}><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>${label}</span><b>${pokemon.nome}</b><em>SKILL LV ${level}</em><small>${currentName} <i>→</i> ${nextName}</small><strong>${upcoming ? `PWR ${currentPower} → ${nextPower}` : "SKILL AL MASSIMO"}</strong></button>`;
+    return `<button type="button" class="test2-dojo-skill-target" ${action}><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>${label}</span><b>${pokemon.nome}</b><em>MOSSA LV ${level}</em><small>${currentName} <i>→</i> ${nextName}</small><strong>${upcoming ? `PWR ${currentPower} → ${nextPower}` : "MOSSA AL MASSIMO"}</strong></button>`;
   };
 
   const skill = () => {
@@ -3639,17 +3676,20 @@ const buildSkillCard = (
 
   const shelterRerollSkillType = (target) => {
     const pokemon = target === "s1" ? getActivePokemon() : target === "s2" ? PKM_RUN?.secondActive : PKM_RUN?.teamSlots?.[Number(target)];
-    const cost = 100;
+    const currentNode = PKM_RUN?.map?.[PKM_RUN?.row]?.[PKM_RUN?.col];
+    const nodeId = `${Number(PKM_RUN?.floor) || 1}:${currentNode?.id || "rifugio"}`;
     if(!pokemon) return false;
-    if(Number(PKM_RUN?.bits || 0) < cost){ msg("Servono 100 monete."); return false; }
+    if(PKM_RUN?.shelterMoveTypeChangeNodeId === nodeId){ msg("Hai già cambiato il tipo di una mossa in questo Rifugio."); return false; }
     const current = PokeMisteryRL_SkillSystem?.getActiveSkill?.(pokemon) || pokemon.skills?.[0];
-    if(!current){ msg("Nessuna skill disponibile per questo Pokémon."); return false; }
+    if(!current){ msg("Nessuna mossa disponibile per questo Pokémon."); return false; }
     const normalizeSkillType = value => String(Array.isArray(value) ? value[0] : value || "normale").split(/[\s,\/]+/)[0].trim().toLowerCase() || "normale";
-    const candidates = (pokemon.__apiMoves || []).filter(move => Number(move.skillLevel) === Number(pokemon.sk || 1) && normalizeSkillType(move.type) !== normalizeSkillType(current.type));
+    const oldType = normalizeSkillType(current.type);
+    const candidates = (pokemon.__apiMoves || []).filter(move => Number(move.skillLevel) === Number(pokemon.sk || 1) && normalizeSkillType(move.type) !== oldType);
     if(!candidates.length){ msg("Nessun tipo alternativo disponibile per questa skill."); return false; }
     const nextSkill = {...rand(candidates)};
     pokemon.skills = [nextSkill];
-    PKM_RUN.bits -= cost;
+    pokemon.__lastMoveTypeReroll = { from:oldType, to:normalizeSkillType(nextSkill.type), nodeId };
+    PKM_RUN.shelterMoveTypeChangeNodeId = nodeId;
     PokeMisteryRL.UI.refreshBottomPanel();
     rifugio();
     return true;
@@ -3670,7 +3710,9 @@ const buildSkillCard = (
       const map = $("map");
       if(map){
         map.className = "test2-shelter-map";
-        map.innerHTML = `<section class="test2-shelter-panel"><span>♥ RIFUGIO</span><h2>Cura e riposo</h2><p>La squadra è stata curata del 50% all'arrivo.</p><div class="test2-shelter-reroll"><b>REROLL TIPO SKILL · 100 ¥</b><small>Scegli un membro per cambiare il tipo della sua skill attiva.</small><div class="test2-shelter-members">${members.map(([label,pokemon,key]) => { const skill = PokeMisteryRL_SkillSystem?.getActiveSkill?.(pokemon) || pokemon.skills?.[0]; return `<button type="button" onclick="shelterRerollSkillType('${key}')"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>${label}</span><b>${pokemon.nome}</b><em>${getTypingBadge(skillType(skill))}</em></button>`; }).join("")}</div></div><button type="button" onclick="next('Hai lasciato il Rifugio.')">CONTINUA</button></section>`;
+        const shelterNodeId = `${Number(PKM_RUN?.floor) || 1}:${currentNode?.id || "rifugio"}`;
+        const changeUsed = PKM_RUN?.shelterMoveTypeChangeNodeId === shelterNodeId;
+        map.innerHTML = `<section class="test2-shelter-panel test2-shelter-move-panel"><span>♥ RIFUGIO</span><p>La squadra è stata curata del <b>50%</b> all'arrivo.</p><div class="test2-shelter-reroll"><b>CAMBIA TIPO MOSSA</b><small>Seleziona un Pokémon a cui cambiare il typing della mossa.</small><div class="test2-shelter-members">${members.map(([,pokemon,key]) => { const move = PokeMisteryRL_SkillSystem?.getActiveSkill?.(pokemon) || pokemon.skills?.[0]; const reroll = pokemon.__lastMoveTypeReroll?.nodeId === shelterNodeId ? pokemon.__lastMoveTypeReroll : null; const currentType = reroll?.from || skillType(move); const receivedType = reroll?.to || null; return `<button type="button" class="test2-shelter-move-card ${reroll ? "changed" : ""}" ${changeUsed ? "disabled" : ""} onclick="shelterRerollSkillType('${key}')"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b><span><small>TIPO ATTUALE</small><em>${getTypingBadge(currentType)}</em></span><span><small>TIPO RICEVUTO</small><em>${receivedType ? getTypingBadge(receivedType) : "—"}</em></span></button>`; }).join("")}</div><i>${changeUsed ? "Cambio usato in questo nodo" : "1 cambio gratuito per nodo"}</i></div><button type="button" onclick="next('Hai lasciato il Rifugio.')">CONTINUA</button></section>`;
       }
       return;
     }
@@ -3922,20 +3964,10 @@ PokeMisteryRL.Battle = (() => {
       ? node.enemyPreviews
       : [node?.enemyPreview].filter(Boolean);
     previews = [...previews];
-    // I boss a ondate entrano nello scenario due alla volta.
-    if(node?.type === "boss1"){
-      const larvae = Object.values(PKM_DB).filter(pokemon => ["weedle", "caterpie"].includes(String(pokemon.nome || "").toLowerCase()));
-      if(larvae.length){
-        previews = Array.from({length:6}, (_, index) => {
-          const pokemon = larvae[index % larvae.length];
-          return {id:pokemon.id, nome:pokemon.nome, immagine:pokemon.immagine, stage:Number(pokemon.stage)};
-        });
-      }
-    }
-    const waveBoss = node?.type === "boss1" || node?.type === "boss2";
-    const waveSize = node?.type === "boss2" ? 4 : 2;
-    const boss1WavePreviews = waveBoss ? [previews.slice(waveSize, waveSize * 2), previews.slice(waveSize * 2, waveSize * 3)] : [];
-    if(waveBoss) previews = previews.slice(0, waveSize);
+    const waveBoss = BossWaves.isWaveBoss(node?.type);
+    const wavePlan = BossWaves.splitWaves(node?.type, previews);
+    const wavePreviews = wavePlan.pending;
+    previews = wavePlan.active;
 
     // Il branco è monotipo per specie: lo sprite visto sul percorso coincide
     // sempre con ogni avversario del fight, senza rinforzi casuali diversi.
@@ -3950,7 +3982,7 @@ PokeMisteryRL.Battle = (() => {
       // Test2 non dipende più dal registro delle vecchie modalità: usa il
       // controllo diretto della run, altrimenti il gruppo restava da uno.
       const campaignFight = isTestCampaign();
-      const requiredEnemies = waveBoss ? waveSize : campaignFight && node?.type !== "event"
+      const requiredEnemies = waveBoss ? wavePlan.size : campaignFight && node?.type !== "event"
         ? (Math.random() < .5 ? 3 : 4)
         : previews.length;
       if(campaignFight && previews.length < requiredEnemies){
@@ -4010,7 +4042,7 @@ PokeMisteryRL.Battle = (() => {
           shopFight: !!enemy.shopFight,
           skillFight: !!enemy.skillFight,
           eventFight: node?.type === "event",
-          boss1WavePreviews,
+          wavePreviews,
           waveBossKind: waveBoss ? node.type : null
         };
         (PokeMisteryRL.Campaigns?.startBattleEffects?.(PKM_RUN.battle) || []).forEach(log);
@@ -4088,6 +4120,22 @@ PokeMisteryRL.Battle = (() => {
    */
   const getTypeItemDamageBonus = (attackType, holder = null) => {
     return getPokemonItemEffects(holder, {type:attackType}).typePowerBonus;
+  };
+
+  // Un KO premia soltanto chi ha inflitto il colpo finale. I boss non
+  // assegnano livelli: la loro ricompensa resta separata dal progresso run.
+  const grantLevelForKnockout = (attacker, defeated) => {
+    const battle = PKM_RUN?.battle;
+    if(!attacker || !defeated || battle?.boss || defeated.__koLevelGranted) return false;
+    defeated.__koLevelGranted = true;
+    const levelSystem = window.PokeMisteryRL_LevelSystem;
+    if(!levelSystem?.setLevel) return false;
+    levelSystem.setLevel(attacker, (Number(attacker.level) || 1) + 1);
+    battle.koLevels ||= [];
+    battle.koLevels.push(attacker.nome);
+    PokeMisteryRL.UI?.refreshBottomPanel?.();
+    log(`⭐ ${attacker.nome} sale al LIV ${attacker.level} per aver sconfitto ${defeated.nome}.`);
+    return true;
   };
 
 
@@ -4234,6 +4282,7 @@ PokeMisteryRL.Battle = (() => {
 
 
     // DANNO
+    const targetWasAlive = Number(target.hp) > 0;
 
     if (targetIsEnemy) {
 
@@ -4245,6 +4294,10 @@ PokeMisteryRL.Battle = (() => {
       if(target === battle.enemy){
         battle.hp = target.hp;
         battle.enemy.hp = target.hp;
+      }
+
+      if(targetWasAlive && Number(target.hp) <= 0){
+        grantLevelForKnockout(attacker, target);
       }
 
 
@@ -4295,9 +4348,11 @@ PokeMisteryRL.Battle = (() => {
         const allEnemies = PKM_RUN?.battle?.enemies || [];
         const behind = allEnemies[allEnemies.indexOf(target) + 1];
         if(behind && Number(behind.hp) > 0){
+          const behindWasAlive = Number(behind.hp) > 0;
           const splash = Math.max(1, Math.floor(dmg * Math.min(1, cardLevel * .25)));
           behind.hp = Math.max(0, Number(behind.hp) - splash);
           PokeMisteryRL.UI?.spawnDamage?.(allEnemies.indexOf(behind) === 1 ? "enemy2" : "enemy", splash, "normal", battlePlayerKey(attacker));
+          if(behindWasAlive && Number(behind.hp) <= 0) grantLevelForKnockout(attacker, behind);
         }
       }
       (PokeMisteryRL.Campaigns?.playerHitEffects?.(attacker, target, attackType) || [])
@@ -4322,9 +4377,11 @@ PokeMisteryRL.Battle = (() => {
         const allEnemies = PKM_RUN?.battle?.enemies || [];
         const behind = allEnemies[allEnemies.indexOf(target) + 1];
         if(behind && Number(behind.hp) > 0 && Math.random() < (PokeMisteryRL.Campaigns?.tacticalChance?.("drago") || 0)){
+          const behindWasAlive = Number(behind.hp) > 0;
           const splash = Math.max(1, Math.floor(dmg * .5));
           behind.hp = Math.max(0, Number(behind.hp) - splash);
           PokeMisteryRL.UI?.spawnDamage?.(allEnemies.indexOf(behind) === 1 ? "enemy2" : "enemy", splash, "normal", battlePlayerKey(attacker));
+          if(behindWasAlive && Number(behind.hp) <= 0) grantLevelForKnockout(attacker, behind);
           log(`🐉 Soffio Linea colpisce anche ${behind.nome} -${splash}`);
         }
       }
@@ -4416,7 +4473,7 @@ PokeMisteryRL.Battle = (() => {
   const handleDefeatedEnemies = () => {
     const battle = PKM_RUN?.battle;
     if(!battle) return;
-    const nextWave = battle.boss1WavePreviews?.shift?.();
+    const nextWave = battle.wavePreviews?.shift?.();
     if(Array.isArray(nextWave) && nextWave.length){
       const enemies = nextWave.map(preview => createEnemy(true, preview)).filter(Boolean);
       if(enemies.length){
@@ -4427,7 +4484,7 @@ PokeMisteryRL.Battle = (() => {
         battle.stats = enemies[0].stats;
         battle.enemySlots = [];
         battle.phase = 0;
-        const wave = 3 - battle.boss1WavePreviews.length;
+        const wave = 3 - battle.wavePreviews.length;
         log(`ONDATA ${wave}/3: ${enemies.map(enemy => enemy.nome).join(" + ")}!`);
         showBattleSurface(PokeMisteryRL.UI.buildBattleTemplate(true, PKM_RUN.floor));
         PokeMisteryRL.UI.updateBattleHP();
@@ -5021,26 +5078,16 @@ PokeMisteryRL.Battle = (() => {
       getHeldItemsForPokemon(pokemon).some(entry => String(entry?.id || entry) === "amuleto")
     );
     const reward = baseReward * (amuletCoinActive ? 2 : 1);
-    const isChallenge = battle.shelterFight || battle.skillFight;
-
     PKM_RUN.bits += reward;
-
-    const levelRecipients = [starter1, starter2, ...(PKM_RUN.teamSlots || [])]
-      .filter(Boolean)
-      .filter((pokemon, index, members) => members.indexOf(pokemon) === index);
-    if(!isChallenge){
-      // Ogni vittoria fa salire tutti i membri di un solo livello: la
-      // formazione cresce sempre in modo uniforme.
-      levelRecipients.forEach(pokemon =>
-        PokeMisteryRL_LevelSystem.setLevel(pokemon, (Number(pokemon.level) || 1) + 1)
-      );
-    }
 
     const defeated = battle.enemy;
     if(battle.shopFight){
       PKM_RUN.kecleonDefeated = true;
       PKM_RUN.kecleonFreeShopOpen = true;
-      PKM_RUN.kecleonFreeOffers = (PKM_RUN.lastShopOffers || []).map(entry => ({ id:entry.id }));
+      // L'assortimento al momento della sconfitta è definitivo per tutta la run.
+      const frozenOffers = PKM_RUN.shopOffers?.length ? PKM_RUN.shopOffers : PKM_RUN.lastShopOffers;
+      PKM_RUN.kecleonFreeOffers = (frozenOffers || []).map(entry => ({ id:entry.id }));
+      PKM_RUN.kecleonAbandonedOffers = PKM_RUN.kecleonFreeOffers.map(entry => ({ ...entry }));
     }
     if(battle.shelterFight || battle.skillFight){
       const currentNode = PKM_RUN?.map?.[PKM_RUN?.row]?.[PKM_RUN?.col];
@@ -5082,10 +5129,8 @@ PokeMisteryRL.Battle = (() => {
       showSkillLevelReward(reward);
       return;
     }
-    if(battle.boss && isTestCampaign()){
-      PokeMisteryRL.TypeCards?.show?.();
-      return;
-    }
+    // La run core prosegue subito dopo un boss. Le carte boost restano una
+    // feature opzionale esterna, ma non interrompono più il percorso.
 
     if(battle.eventFight){
       const currentNode = PKM_RUN?.map?.[PKM_RUN?.row]?.[PKM_RUN?.col];
@@ -5140,12 +5185,23 @@ PokeMisteryRL.Battle = (() => {
       return;
     }
 
-    const levelText = levelRecipients.map(pokemon => `+1 LIV ${pokemon.nome}`).join(" · ");
+    const levelText = battle.boss
+      ? "Nessun livello dai Boss"
+      : (() => {
+          const totals = new Map();
+          (battle.koLevels || []).forEach(name => {
+            const key = String(name || "Pokémon");
+            totals.set(key, (totals.get(key) || 0) + 1);
+          });
+          return totals.size
+            ? [...totals].map(([name, levels]) => `+${levels} LIV ${name}`).join(" · ")
+            : "Nessun KO";
+        })();
     if(isTest2Mode()){
       const map = $("map");
       if(map){
         map.className = "test2-event-reward-map";
-        map.innerHTML = `<section class="test2-event-reward-panel"><span>✦ VITTORIA</span><h2>${battle.boss ? "Boss sconfitto!" : "Incontro completato!"}</h2><p>Ricompensa: <b>+${reward}¥</b></p><div><b>${levelText}</b><small>Tutta la squadra sale di livello.</small></div><button type="button" onclick="next('Vittoria!')">CONTINUA</button></section>`;
+        map.innerHTML = `<section class="test2-event-reward-panel"><span>✦ VITTORIA</span><h2>${battle.boss ? "Boss sconfitto!" : "Incontro completato!"}</h2><p>Ricompensa: <b>+${reward}¥</b></p><div><b>${levelText}</b><small>I livelli sono assegnati ai KO.</small></div><button type="button" onclick="next('Vittoria!')">CONTINUA</button></section>`;
         return;
       }
     }
@@ -5599,7 +5655,7 @@ PokeMisteryRL.UI = (() => {
   const buildTestBottomTemplate = () => `
     <div id="campaignTestBottom" class="campaign-test-bottom">
       <div id="campaignTestParty" class="campaign-test-party"></div>
-      <div class="campaign-test-bottom-foot"><button type="button" class="campaign-test-bonus" onclick="openFloorUpgradeCollector()">▦ BOOST</button><span>💰 <b id="campaignTestBits">0</b></span></div>
+      <div class="campaign-test-bottom-foot"><span>💰 <b id="campaignTestBits">0</b></span></div>
     </div>
   `;
 
@@ -5622,11 +5678,10 @@ PokeMisteryRL.UI = (() => {
 
   const buildTest2UtilityBar = () => `
     <nav class="test2-utility-bar" aria-label="Comandi run">
-      <span id="test2FloorReadout" class="test2-utility-floor">${PKM_RUN?.extraPassage ? "PASSAGGIO" : `PIANO ${PKM_RUN?.floor || 1}`}</span>
-      <button type="button" onclick="toggleInventory()" aria-label="Zaino" title="Zaino">🎒</button>
       <span class="test2-utility-money" title="Soldi">💰 <b id="test2BitsReadout">${Number(PKM_RUN?.bits) || 0}</b></span>
       <button type="button" onclick="openHomeMenu()" aria-label="Menu" title="Menu">☰</button>
       <button type="button" class="test2-reset" onclick="quickReset()" aria-label="Ricomincia" title="Ricomincia">↻</button>
+      <button type="button" onclick="toggleInventory()" aria-label="Zaino" title="Zaino">🎒</button>
     </nav>
   `;
 
@@ -6513,10 +6568,6 @@ PokeMisteryRL.UI = (() => {
 
       boss: "👹",
 
-      boss1: "👹",
-
-      boss2: "👹",
-
       meat: "🍖",
 
       skill: "📈",
@@ -6572,7 +6623,7 @@ PokeMisteryRL.UI = (() => {
           "node " +
           node.type;
 
-        if(node.type === "fight" || node.type === "boss" || node.type === "boss1" || node.type === "boss2" || node.type === "event"){
+        if(node.type === "fight" || BossWaves.isBossType(node.type) || node.type === "event"){
         const category = String(PKM_RUN.categoria || "").toLowerCase();
           if(["bosco", "safari"].includes(category)) cn += " fight-bosco";
           else if(category === "acqua") cn += " fight-acqua";
@@ -6638,9 +6689,7 @@ PokeMisteryRL.UI = (() => {
 
         const isBattleNode =
           node.type === "fight" ||
-          node.type === "boss" ||
-          node.type === "boss1" ||
-          node.type === "boss2" ||
+          BossWaves.isBossType(node.type) ||
           node.type === "rifugio" ||
           node.type === "shop" ||
           node.type === "skill";
@@ -6649,7 +6698,7 @@ PokeMisteryRL.UI = (() => {
         // Gli altri nodi conservano il proprio sprite.
         const hideTestBattlePreview =
           window.PokeMisteryRL_Modes?.get?.(PKM_RUN?.mode)?.famiglia === "campagne" &&
-          (node.type === "fight" || node.type === "boss" || node.type === "boss1" || node.type === "boss2");
+          (node.type === "fight" || BossWaves.isBossType(node.type));
 
         if(hideTestBattlePreview && (node.ok || node.done || activeNode)){
           el.textContent = "";
@@ -6687,7 +6736,7 @@ PokeMisteryRL.UI = (() => {
         }else if (activeNode || node.done) {
 
           el.textContent =
-            icons[node.type] ||
+            icons[node.type] || BossWaves.nodeIcon(node.type) ||
             "❓";
 
           el.onclick =
@@ -7179,8 +7228,8 @@ PokeMisteryRL.UI = (() => {
     ];
     const enemies = Array.isArray(battle?.enemies) && battle.enemies.length
       ? battle.enemies : [battle?.enemy].filter(Boolean);
-    const pendingBoss1 = Array.isArray(battle?.boss1WavePreviews)
-      ? battle.boss1WavePreviews.flat().filter(Boolean)
+    const pendingWaves = Array.isArray(battle?.wavePreviews)
+      ? battle.wavePreviews.flat().filter(Boolean)
       : [];
     // Sei posizioni possibili (3 righe × 2 colonne), ma al massimo quattro
     // vengono occupate. Le salviamo nella battaglia per non far saltare gli
@@ -7205,7 +7254,7 @@ PokeMisteryRL.UI = (() => {
       const hpPercent = clamp((Number(pokemon.hp) || 0) / maxHp * 100, 0, 100);
       const isSceneMember = slot === 0 || slot >= 2;
       return `<div class="bottom-campagna-member member-${slot} ${isSceneMember ? "starter" : "ally"} ${Number(pokemon.hp) <= 0 ? "dead" : ""}" data-battle-player="${playerIndex}"><span class="bottom-campagna-types" aria-label="Tipi di ${pokemon.nome}">${bottomTypeBadges(pokemon)}</span><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">${isSceneMember ? `<i class="bottom-campagna-hp"><b id="test2ArenaPlayer${playerIndex}Hp" style="width:${hpPercent}%"></b></i>` : ""}</div>`;
-    }).join("")}</div><div class="test2-enemy-formation">${enemies.map((pokemon, index) => `<div class="test2-enemy-sprite enemy-${index} enemy-slot-${enemySlots[index]} ${Number(pokemon.hp) <= 0 ? "dead" : ""}" data-battle-enemy="${index}"><span class="bottom-campagna-types" aria-label="Tipi di ${pokemon.nome}">${bottomTypeBadges(pokemon)}</span><em class="test2-enemy-level">LV ${pokemon.level || 1}</em><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"></div>`).join("")}</div>${pendingBoss1.length ? `<div class="test2-boss1-reserve" aria-label="Larve in attesa">${pendingBoss1.map(pokemon => `<img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">`).join("")}</div>` : ""}${buildTest2UtilityBar()}</div>`;
+    }).join("")}</div><div class="test2-enemy-formation">${enemies.map((pokemon, index) => `<div class="test2-enemy-sprite enemy-${index} enemy-slot-${enemySlots[index]} ${Number(pokemon.hp) <= 0 ? "dead" : ""}" data-battle-enemy="${index}"><span class="bottom-campagna-types" aria-label="Tipi di ${pokemon.nome}">${bottomTypeBadges(pokemon)}</span><em class="test2-enemy-level">LV ${pokemon.level || 1}</em><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"></div>`).join("")}</div>${pendingWaves.length ? `<div class="test2-wave-reserve" aria-label="Avversari in attesa">${pendingWaves.map(pokemon => `<img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">`).join("")}</div>` : ""}${buildTest2UtilityBar()}</div>`;
   };
 
 
@@ -8329,15 +8378,31 @@ const shop = () => {
     leggendaria: 500
   };
 
-  if(PKM_RUN.kecleonDefeated && !PKM_RUN.kecleonFreeShopOpen){
-    modal(`<div class="center shop-box shop-empty"><div class="shop-header"><div class="shop-header-copy"><h2>🛒 NEGOZIO</h2><span>Il negozio è vuoto.</span></div><div class="shop-wallet">💰 <b>${Number(PKM_RUN.bits) || 0}</b></div></div><p>Non è rimasto più nulla sugli scaffali.</p><button type="button" onclick="next('Negozio vuoto')">ESCI</button></div>`);
+  if(PKM_RUN.kecleonDefeated && (!Array.isArray(PKM_RUN.kecleonFreeOffers) || !PKM_RUN.kecleonFreeOffers.length)){
+    if(isTest2Mode()){
+      const bottom = $("bottomCampagna");
+      const map = $("map");
+      bottom?.querySelectorAll(".test2-shop-kecleon,.test2-kecleon-bubble").forEach(entry => entry.remove());
+      if(map){
+        map.className = "test2-shop-map";
+        map.innerHTML = `<section class="test2-shop-panel test2-shop-empty-panel"><header><span>🏪 NEGOZIO</span><button type="button" class="test2-shop-close" aria-label="Esci dal negozio" onclick="next('Negozio vuoto')">×</button></header><small>SOLD OUT</small><div class="test2-shop-empty-copy"><b>SOLD OUT</b><span>Hai preso tutti gli oggetti rimasti.</span></div></section>`;
+      }
+      return;
+    }
+    modal(`<div class="center shop-box shop-empty"><div class="shop-header"><div class="shop-header-copy"><h2>🛒 NEGOZIO</h2><span>SOLD OUT</span></div><div class="shop-wallet">💰 <b>${Number(PKM_RUN.bits) || 0}</b></div></div><p>Hai preso tutti gli oggetti rimasti.</p><button type="button" onclick="next('Negozio vuoto')">ESCI</button></div>`);
     return;
   }
 
-  const pool = [...items];
-  const offers = Array.isArray(PKM_RUN.kecleonFreeOffers)
-    ? PKM_RUN.kecleonFreeOffers.map(entry => ({ item: items.find(item => String(item.id) === String(entry.id)), price:0 })).filter(entry => entry.item)
-    : [];
+  // Gli scaffali sono persistenti per tutta la run: tornare dal dettaglio
+  // non li rimescola. Soltanto uno slot acquistato viene rifornito.
+  const savedOffers = Array.isArray(PKM_RUN.shopOffers) ? PKM_RUN.shopOffers : [];
+  const offers = PKM_RUN.kecleonDefeated
+    ? (Array.isArray(PKM_RUN.kecleonFreeOffers)
+      ? PKM_RUN.kecleonFreeOffers.map(entry => ({ item: items.find(item => String(item.id) === String(entry.id)), price:0 })).filter(entry => entry.item)
+      : [])
+    : savedOffers.map(entry => ({ item: items.find(item => String(item.id) === String(entry.id)), price:Number(entry.price) || 0 })).filter(entry => entry.item);
+  const shownIds = new Set(offers.map(entry => String(entry.item.id)));
+  const pool = items.filter(item => !shownIds.has(String(item.id)));
   const theftAttempts = Math.max(
     0,
     Number(PKM_RUN.shopTheftAttempts ?? PKM_RUN.shopThefts) || 0
@@ -8364,7 +8429,8 @@ const shop = () => {
   }
 
   if(!PKM_RUN.kecleonDefeated){
-    PKM_RUN.lastShopOffers = offers.map(({item, price}) => ({ id:item.id, price }));
+    PKM_RUN.shopOffers = offers.map(({item, price}) => ({ id:item.id, price }));
+    PKM_RUN.lastShopOffers = PKM_RUN.shopOffers.map(entry => ({ ...entry }));
   }
 
   // Test2: Kecleon entra nella scena; gli scaffali sostituiscono la mappa.
@@ -8374,13 +8440,15 @@ const shop = () => {
     if(bottom){
       // Il negozio non eredita mai personaggi o sprite della scena precedente.
       bottom.querySelectorAll(".test2-enemy-formation,.test2-toll-group,.test2-recruit-candidate,.test2-dojo-challenger,.test2-shop-kecleon,.test2-kecleon,.test2-kecleon-bubble").forEach(entry => entry.remove());
-      bottom.insertAdjacentHTML("beforeend", `<img class="test2-shop-kecleon" src="${sprite("kecleon.png")}" alt="Kecleon">`);
-      const warning = theftAttempts ? ["Ehi! Quello è mio!", "Ti sto osservando…", "Ultimo avvertimento!"][Math.min(2,theftAttempts - 1)] : "";
-      if(warning) bottom.insertAdjacentHTML("beforeend", `<span class="test2-kecleon-bubble">${warning}</span>`);
+      if(!PKM_RUN.kecleonDefeated){
+        bottom.insertAdjacentHTML("beforeend", `<img class="test2-shop-kecleon" src="${sprite("kecleon.png")}" alt="Kecleon">`);
+        const warning = theftAttempts ? ["Ehi! Quello è mio!", "Ti sto osservando…", "Ultimo avvertimento!"][Math.min(2,theftAttempts - 1)] : "";
+        if(warning) bottom.insertAdjacentHTML("beforeend", `<span class="test2-kecleon-bubble">${warning}</span>`);
+      }
     }
     if(map){
-      map.classList.add("test2-shop-map");
-      map.innerHTML = `<div class="test2-shop-grid">${offers.map(({item,price}) => `<button type="button" class="test2-shop-item" onclick="openShopItemDetail('${String(item.id).replace(/'/g,"\\'")}',${price})"><img src="${item.immagine || ""}" alt="${item.nome || item.id}"><b>${item.nome || item.id}</b></button>`).join("")}</div><button type="button" class="test2-shop-exit" onclick="next('Negozio visitato')">ESCI</button>`;
+      map.className = "test2-shop-map";
+      map.innerHTML = `<section class="test2-shop-panel"><header><span>🏪 NEGOZIO</span><button type="button" class="test2-shop-close" aria-label="Esci dal negozio" onclick="next('Negozio visitato')">×</button></header><small>Scegli un oggetto</small><div class="test2-shop-grid">${offers.map(({item,price}) => `<button type="button" class="test2-shop-item" onclick="openShopItemDetail('${String(item.id).replace(/'/g,"\\'")}',${price})"><img src="${item.immagine || ""}" alt="${item.nome || item.id}"><b>${item.nome || item.id}</b><em>${PKM_RUN?.kecleonDefeated ? "GRATIS" : `💰 ${price}`}</em></button>`).join("")}</div></section>`;
     }
     return;
   }
@@ -8431,10 +8499,9 @@ const openShopItemDetail = (itemId, price) => {
   if(isTest2Mode()){
     const map = $("map");
     if(map){
-      map.querySelector(".test2-shop-grid")?.classList.add("is-blurred");
-      map.querySelector(".test2-shop-exit")?.classList.add("is-blurred");
+      map.querySelector(".test2-shop-panel")?.classList.add("is-blurred");
       map.querySelector(".test2-shop-detail")?.remove();
-      map.insertAdjacentHTML("beforeend", `<section class="test2-shop-detail"><div class="test2-shop-detail-icon">${item.immagine ? `<img src="${item.immagine}" alt="${item.nome}">` : "◈"}</div><span>DETTAGLI OGGETTO</span><h2>${item.nome}</h2><p>${effect}</p><strong>${PKM_RUN?.kecleonDefeated ? "GRATIS" : `💰 ${price}`}</strong><div class="test2-shop-detail-actions"><button onclick="buyShopItem('${String(item.id).replace(/'/g,"\\'")}',${price})">${PKM_RUN?.kecleonDefeated ? "PRENDI" : "COMPRA"}</button>${PKM_RUN?.kecleonDefeated ? "" : `<button class="test2-shop-steal" onclick="stealShopItem('${String(item.id).replace(/'/g,"\\'")}')">RUBA</button>`}</div><button class="test2-shop-detail-back" onclick="shop()">← SCAFFALI</button></section>`);
+      map.insertAdjacentHTML("beforeend", `<section class="test2-shop-detail"><div class="test2-shop-detail-main"><div class="test2-shop-detail-icon">${item.immagine ? `<img src="${item.immagine}" alt="${item.nome}">` : "◈"}</div><div class="test2-shop-detail-info"><span>OGGETTO</span><h2>${item.nome}</h2><p>${effect}</p><strong>${PKM_RUN?.kecleonDefeated ? "GRATIS" : `💰 ${price}`}</strong></div></div><div class="test2-shop-detail-actions"><button onclick="buyShopItem('${String(item.id).replace(/'/g,"\\'")}',${price})">${PKM_RUN?.kecleonDefeated ? "PRENDI" : "COMPRA"}</button>${PKM_RUN?.kecleonDefeated ? "" : `<button class="test2-shop-steal" onclick="stealShopItem('${String(item.id).replace(/'/g,"\\'")}')">RUBA</button>`}</div><button class="test2-shop-detail-back" onclick="shop()">← SCAFFALI</button></section>`);
     }
     return true;
   }
@@ -8501,6 +8568,10 @@ const buyShopItem = (itemId, price) => {
   if(PKM_RUN.kecleonDefeated && cost === 0 && Array.isArray(PKM_RUN.kecleonFreeOffers)){
     PKM_RUN.kecleonFreeOffers = PKM_RUN.kecleonFreeOffers.filter(entry => String(entry.id) !== String(item.id));
     if(!PKM_RUN.kecleonFreeOffers.length) PKM_RUN.kecleonFreeShopOpen = false;
+  }else if(!PKM_RUN.kecleonDefeated && Array.isArray(PKM_RUN.shopOffers)){
+    // Rimuove soltanto lo slot comprato: shop() lo riempirà con un nuovo item.
+    const slot = PKM_RUN.shopOffers.findIndex(entry => String(entry?.id) === String(item.id));
+    if(slot >= 0) PKM_RUN.shopOffers.splice(slot, 1);
   }
 
   refreshBottomPanel();
@@ -8525,6 +8596,16 @@ const stealShopItem = (itemId) => {
   if(attempts >= 3){
     PKM_RUN.shopTheftAttempts = attempts + 1;
     PKM_RUN.afterBattleNodeType = "shop";
+    if(isTest2Mode()){
+      const map = $("map");
+      if(map){
+        map.querySelector(".test2-shop-detail")?.remove();
+        map.querySelector(".test2-shop-panel")?.classList.remove("is-blurred");
+        map.classList.add("test2-shop-locked");
+        map.querySelector(".test2-shop-lock-overlay")?.remove();
+        map.insertAdjacentHTML("beforeend", `<section class="test2-shop-lock-overlay"><span>⚠ NEGOZIO BLOCCATO</span><h2>Kecleon ti affronta!</h2><p>Gli scaffali resteranno chiusi fino alla fine dello scontro.</p></section>`);
+      }
+    }
     closeModal();
     busy = 1;
     fight(false);
@@ -8545,6 +8626,10 @@ const stealShopItem = (itemId) => {
   const existing = PKM_RUN.items.find(entry => entry && String(entry.id) === String(item.id));
   if(existing) existing.qty = Math.max(0, Number(existing.qty) || 0) + 1;
   else PKM_RUN.items.push({ id:item.id, qty:1 });
+  if(!PKM_RUN.kecleonDefeated && Array.isArray(PKM_RUN.shopOffers)){
+    const slot = PKM_RUN.shopOffers.findIndex(entry => String(entry?.id) === String(item.id));
+    if(slot >= 0) PKM_RUN.shopOffers.splice(slot, 1);
+  }
   refreshBottomPanel();
   msg(`🕵️ Hai rubato ${item.nome}!`);
   shop();
