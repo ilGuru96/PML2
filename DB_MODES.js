@@ -2,16 +2,16 @@
 window.PokeMisteryRL_Modes = window.PokeMisteryRL_Modes || {};
 
 const TEST2_FLOORS = [
-  { piano:1, nome:"Bosco Smeraldo", categoria:"bosco", livelli:{min:5,max:5}, bossLevel:11, wilds:["Rattata","Pidgey"], bossRule:"counterStarter" },
-  { piano:2, nome:"Bosco Profondo", categoria:"bosco", livelli:{min:17,max:17}, bossLevel:23, wildFilter:{typesAny:["erba"],stage:1}, bossPair:["Butterfree","Beedrill"] },
-  { piano:3, nome:"Monte Luna", categoria:"grotta", livelli:{min:29,max:29}, bossLevel:35, wildFilter:{typesAny:["terra","roccia"],include:["Zubat","Clefairy"]}, bossPair:["Kabuto","Omanyte"] },
-  { piano:4, nome:"Centrale Elettrica", categoria:"torre", livelli:{min:41,max:41}, bossLevel:47, wildFilter:{typesAny:["elettro"]}, bossAlternatives:[["Voltorb","Electrode"],["Zapdos"]] },
-  { piano:5, nome:"MN Anna", categoria:"acqua", livelli:{min:53,max:53}, bossLevel:59, wildFilter:{typesAny:["acqua"]}, boss:["Kingler"] },
-  { piano:6, nome:"Torre Pokémon", categoria:"torre", livelli:{min:65,max:65}, bossLevel:71, wildFilter:{typesAny:["spettro"]}, bossPair:["Marowak","Cubone"] },
-  { piano:7, nome:"Zona Safari", categoria:"safari", livelli:{min:77,max:77}, bossLevel:83, wilds:["Chansey","Kangaskhan","Scyther","Tauros"], bossPair:["Dragonair","Dratini"] },
-  { piano:8, nome:"Isole Spuma", categoria:"grotta", livelli:{min:89,max:89}, bossLevel:95, wildFilter:{typesAny:["roccia","terra","acqua"]}, bossPair:["Tentacruel","Tentacool"] },
-  { piano:9, nome:"Villa Pokémon", categoria:"torre", livelli:{min:101,max:101}, bossLevel:107, wildFilter:{typesAny:["fuoco"]}, bossRule:"dittoMew" },
-  { piano:10, nome:"Via Vittoria", categoria:"grotta", livelli:{min:113,max:113}, bossLevel:119, wildFilter:{stage:3}, bossRule:"discardedStartersOrMoltres", finale:true }
+  { piano:1, nome:"Sentiero Verde", categoria:"bosco", livelli:{min:1,max:1}, wilds:["Oddish","Bellsprout","Pidgey","Zubat"], bossPair:["Ivysaur","Pidgeotto"] },
+  { piano:2, nome:"Ruscello Muschioso", categoria:"bosco", livelli:{min:1,max:1}, wilds:["Poliwag","Tentacool","Nidorino","Pidgeotto"], bossPair:["Gloom","Weepinbell"] },
+  { piano:3, nome:"Palude Azzurra", categoria:"bosco", livelli:{min:1,max:1}, wilds:["Psyduck","Krabby","Horsea","Golbat"], bossPair:["Golbat","Vileplume"] },
+  { piano:4, nome:"Radure Tossiche", categoria:"bosco", livelli:{min:1,max:1}, wilds:["Paras","Venonat","Staryu","Fearow"], bossPair:["Venomoth","Fearow"] },
+  { piano:5, nome:"Lago Silente", categoria:"bosco", livelli:{min:1,max:1}, wilds:["Shellder","Goldeen","Tentacool","Gloom"], bossPair:["Tentacruel","Wartortle"] },
+  { piano:6, nome:"Giardino dei Veleni", categoria:"bosco", livelli:{min:1,max:1}, wilds:["Weepinbell","Arbok","Golbat","Seel"], bossPair:["Victreebel","Golbat"] },
+  { piano:7, nome:"Rive Ventose", categoria:"bosco", livelli:{min:1,max:1}, wilds:["Golduck","Dewgong","Pidgeotto","Venomoth"], bossPair:["Dewgong","Venomoth"] },
+  { piano:8, nome:"Bosco di Nebbia", categoria:"bosco", livelli:{min:1,max:1}, wilds:["Starmie","Cloyster","Pidgeot","Vileplume"], boss:["Gyarados"] },
+  { piano:9, nome:"Selva Antica", categoria:"bosco", livelli:{min:1,max:1}, wilds:["Tangela","Victreebel","Tentacruel","Pidgeot"], bossPair:["Venusaur","Tentacruel"] },
+  { piano:10, nome:"Santuario delle Quattro Correnti", categoria:"bosco", livelli:{min:1,max:1}, wilds:["Blastoise","Venusaur","Gyarados","Pidgeot"], bossAlternatives:[["Venusaur","Blastoise"],["Gyarados"]], finale:true }
 ];
 
 window.PokeMisteryRL_Modes.DB_MODES = {

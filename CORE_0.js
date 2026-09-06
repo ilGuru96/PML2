@@ -851,7 +851,7 @@ const createRunState = (starter) => ({
     secondActive: null, // STARTER2 - quello che combatte e si cambia
     originPokemon:starter.id,
     level:starter.level, sk:starter.sk,
-    floor:1, row:0, col:0, hp:starter.hp, maxHp:starter.maxHp, fame:starter.fame, bits:200,
+    floor:1, row:0, col:0, hp:starter.hp, maxHp:starter.maxHp, fame:starter.fame, bits:9999,
     teamSlots:[null], map:[], battle:null, dead:false,
     inventory:[], eggs:[], incubator:{active:false, steps:0, total:0},
     heldItems:{s1:[],s2:[]},
@@ -874,35 +874,25 @@ const createRunState = (starter) => ({
     if(!available.length){ console.error("Catalogo PokeAPI non pronto"); return; }
     const highBst = available.filter(pokemon => Number(pokemon.bst) >= 550);
     const openingPool = highBst.length ? highBst : available;
+    // In Test2 lo starter è sempre scelto dal giocatore nella schermata
+    // iniziale; il fallback mantiene Charmander se la scelta non arriva.
     const selectedId = modeName === "test2"
-      ? rand(openingPool)?.id
+      ? (getPokemonId(pokemonId) ?? getPokemonId(4) ?? rand(available)?.id)
       : (getPokemonId(pokemonId) ?? rand(available)?.id);
     let starter = createPokemonInstance(selectedId); if(!starter) return;
     const modeData = window.PokeMisteryRL_Modes?.get?.(modeName);
-    starter.level = 5;
+    starter.level = modeName === "test2" ? 90 : 5;
     starter.sk = Math.max(1, Number(starter.sk) || 1);
     PKM_RUN = createRunState(starter); PKM_RUN.mode = modeName;
+    window.PKM_RUN = PKM_RUN;
     if(modeName === "test2"){
-      // Test2 parte sempre con tre Pokémon distinti, tutti con BST alto.
-      const partnerPool = openingPool.filter(pokemon => Number(pokemon.id) !== Number(starter.id));
-      const partner = createPokemonInstance(rand(partnerPool.length ? partnerPool : openingPool)?.id);
-      if(partner){
-        partner.level = 5;
-        partner.sk = Math.max(1, Number(partner.sk) || 1);
-        PokeMisteryRL_LevelSystem?.rebuildBaseStats?.(partner);
-        partner.hp = partner.maxHp;
-      }
-      PKM_RUN.secondActive = partner || null;
-      const thirdPool = partnerPool.filter(pokemon => Number(pokemon.id) !== Number(partner?.id));
-      const third = createPokemonInstance(rand(thirdPool.length ? thirdPool : partnerPool)?.id);
-      if(third){
-        third.level = 5;
-        third.sk = Math.max(1, Number(third.sk) || 1);
-        PokeMisteryRL_LevelSystem?.rebuildBaseStats?.(third);
-        third.hp = third.maxHp;
-      }
-      PKM_RUN.teamSlots = [third || null];
+      // La run inizia con il solo starter. Il primo nodo offre tre coppie
+      // di compagni e completa S2/S3 dopo la scelta.
+      PKM_RUN.secondActive = null;
+      PKM_RUN.teamSlots = [null];
+      PKM_RUN.starterChosen = false;
       PokeMisteryRL_LevelSystem?.rebuildBaseStats?.(starter);
+      PokeMisteryRL_LevelSystem?.setLevel?.(starter, 90);
       starter.hp = starter.maxHp;
       // Una copia di ogni oggetto è disponibile nello zaino iniziale.
       const items = window.PokeMisteryRL_Items?.DB_ITEMS || window.DB_ITEMS || {};
@@ -915,8 +905,40 @@ const createRunState = (starter) => ({
     msg(`${starter.nome} pronto! ${rolls}`);
   };
   const quickReset = () => { if(busy) return; startPokemon(PKM_RUN?.originPokemon, PKM_RUN?.mode||"torre"); };
+  // Testi raccolti in un unico oggetto: ogni chiave potrà ricevere una
+  // traduzione senza cambiare markup, layout o logica della guida.
+  const GUIDE_COPY = {
+    it: {
+      guide:"GUIDA", choose:"Scegli un argomento", combat:"Combattimento", team:"Squadra", map:"Percorso",
+      targeting:"Bersagli", turns:"Turni", formation:"Formazione", health:"Vita", nodes:"Nodi",
+      targetingTitle:"Priorità dei bersagli", targetingText:"I tre slot squadra cercano avversari con una priorità fissa. Gli avversari, invece, scelgono casualmente uno dei tre slot squadra ancora vivi.",
+      turnsTitle:"Come funziona un turno", turnsText:"Tutti i Pokémon vivi agiscono una volta. La Velocità decide chi parte prima; un Pokémon KO non può più attaccare.",
+      formationTitle:"Posizioni squadra", formationText:"I tre slot sono alto, davanti e basso. Puoi trascinare gli sprite nella barra squadra per cambiare l'ordine prima del nodo successivo.",
+      healthTitle:"Barre vita", healthText:"La barra sotto ogni Pokémon mostra i suoi PS attuali. A zero PS il Pokémon è KO e non agisce fino a una cura.",
+      nodesTitle:"Tipi di nodo", nodesText:"Scegli solo nodi collegati al percorso illuminato. Ogni scelta chiude il nodo attuale e apre il successivo."
+    }
+  };
+  const guideText = key => GUIDE_COPY.it[key] || key;
+  const guideBackButton = action => `<button type="button" class="guide-back" onclick="${action}">← INDIETRO</button>`;
+  const openGuidePage = (category, page) => {
+    const title = guideText(`${page}Title`);
+    const text = guideText(`${page}Text`);
+    const visual = page === "targeting" ? `<div class="guide-target-visual" aria-label="Schema priorità bersagli"><div class="guide-allies"><i title="slot alto">▲</i><i title="slot davanti">●</i><i title="slot basso">▼</i></div><b>VS</b><div class="guide-enemies"><i>●</i><i>●</i><i>●</i><i>●</i><i>●</i><i>●</i></div></div><ol class="guide-priority"><li><span>▼</span> Slot basso → primo avversario libero</li><li><span>▲</span> Slot alto → secondo avversario libero</li><li><span>●</span> Slot davanti → terzo avversario libero</li><li><span>↔</span> Ogni avversario sceglie casualmente uno slot squadra vivo</li></ol>` : page === "nodes" ? `<ul class="guide-priority guide-node-list"><li><span>⚔</span><b>Fight</b> · Combattimento normale: vincendo ottieni soldi, esperienza e possibili ricompense.</li><li><span>👹</span><b>Boss</b> · Scontro più importante del percorso. Il Boss 1 è una scelta iniziale; il Boss finale chiude il piano.</li><li><span>♥</span><b>Rifugio</b> · Tutta la squadra recupera il 50% dei PS massimi, fino al 100%. Un KO torna al 50%. Puoi affrontare la sfida per 2 oggetti curativi oppure cambiare il tipo della skill attiva pagando 100 monete.</li><li><span>🏪</span><b>Shop</b> · Compra oggetti e potenziamenti con le monete raccolte.</li><li><span>🥋</span><b>Skill / Dojo</b> · Accetta una sfida per ricevere un potenziamento skill o un oggetto tipo.</li><li><span>?</span><b>Evento</b> · Evento casuale: può offrire un bonus, una scelta rischiosa o un malus.</li></ul>` : "";
+    modal(`<section class="center guide-panel"><header><span>${guideText(category)}</span><h2>${title}</h2></header>${visual}<p>${text}</p>${guideBackButton(`openGuideCategory('${category}')`)}</section>`);
+  };
+  const openGuideCategory = category => {
+    const pages = category === "combat" ? ["targeting", "turns"] : category === "team" ? ["formation", "health"] : ["nodes"];
+    modal(`<section class="center guide-panel guide-category"><header><span>${guideText("guide")}</span><h2>${guideText(category)}</h2></header><div class="guide-page-list">${pages.map(page => `<button type="button" onclick="openGuidePage('${category}','${page}')"><b>${guideText(page)}</b><small>${guideText(`${page}Title`)}</small><i>›</i></button>`).join("")}</div>${guideBackButton("openGuideMenu()")}</section>`);
+  };
+  const openGuideMenu = () => {
+    modal(`<section class="center guide-panel guide-home"><header><span>${guideText("guide")}</span><h2>${guideText("choose")}</h2></header><div class="guide-category-list"><button type="button" onclick="openGuideCategory('combat')"><i>⚔</i><b>${guideText("combat")}</b><small>Bersagli e turni</small></button><button type="button" onclick="openGuideCategory('team')"><i>◈</i><b>${guideText("team")}</b><small>Slot e vita</small></button><button type="button" onclick="openGuideCategory('map')"><i>⌘</i><b>${guideText("map")}</b><small>Nodi e scelte</small></button></div>${guideBackButton("openHomeMenu()")}</section>`);
+  };
+  const showBattleGuide = openGuideMenu;
+  const openHomeMenu = () => {
+    modal(`<section class="center home-menu"><span>MENU</span><h2>Cosa vuoi fare?</h2><div><button type="button" onclick="openGuideMenu()">GUIDA</button><button type="button" onclick="goMenu()">HOME</button></div><button type="button" onclick="closeModal()">ANNULLA</button></section>`);
+  };
   const goMenu = () => { clearTimeout(timer); if(PKM_RUN?.battle) PKM_RUN.battle=null; $("modal")?.classList.add("hidden"); $("game")?.classList.add("hidden"); $("menu")?.classList.remove("hidden"); };
-  return { createRunState, buildRunSkeleton, startPokemon, quickReset, goMenu };
+  return { createRunState, buildRunSkeleton, startPokemon, quickReset, openHomeMenu, openGuideMenu, openGuideCategory, openGuidePage, showBattleGuide, goMenu };
 })();
 
 // Gli oggetti appartengono al Pokémon, non alla posizione Starter/Partner.
@@ -1847,7 +1869,10 @@ PokeMisteryRL.Map = (() => {
     // in questa campagna il database giocabile è quello Kanto, escluso
     // l'avversario speciale del negozio.
     const all = Object.values(PKM_DB).filter(p => Number(p.id) !== 10001);
-    const byNames = names => all.filter(p => names.includes(p.nome));
+    const byNames = names => {
+      const wanted = new Set((names || []).map(name => String(name).toLowerCase()));
+      return all.filter(p => wanted.has(String(p.nome || "").toLowerCase()));
+    };
 
     if(isBoss){
       if(Array.isArray(floorData?.boss) && floorData.boss.length){
@@ -1921,7 +1946,10 @@ PokeMisteryRL.Map = (() => {
 
   const getBossEncounter = (floorData, enemyStage) => {
     const allBosses = Object.values(PKM_DB).filter(p => Number(p.id) !== 10001);
-    const byAllNames = names => allBosses.filter(p => names.includes(p.nome));
+    const byAllNames = names => {
+      const wanted = new Set((names || []).map(name => String(name).toLowerCase()));
+      return allBosses.filter(p => wanted.has(String(p.nome || "").toLowerCase()));
+    };
 
     if(Array.isArray(floorData?.bossAlternatives) && floorData.bossAlternatives.length){
       const names = rand(floorData.bossAlternatives) || [];
@@ -1972,15 +2000,19 @@ PokeMisteryRL.Map = (() => {
     const test2NodeTypes = isTest2Mode() ? layout.map(count => Array(count).fill("fight")) : null;
     if(test2NodeTypes){
       test2NodeTypes[0][0] = "free";
-      test2NodeTypes[layout.length - 2].fill("rifugio");
-      test2NodeTypes[layout.length - 1][0] = "boss";
+      // La seconda riga contiene sempre Boss 2. Boss 1 è invece il guardiano
+      // conclusivo, esclusivamente al piano 3.
+      test2NodeTypes[1][Math.floor(Math.random() * layout[1])] = "boss2";
+      // L'altra scelta della seconda riga è sempre il Rifugio di Chansey.
+      test2NodeTypes[1][test2NodeTypes[1].findIndex(type => type !== "boss2")] = "rifugio";
+      test2NodeTypes[layout.length - 1][0] = Number(PKM_RUN.floor) === 3 ? "boss1" : "boss";
       // Colonna 5: una Skill casuale + Fight. Colonna 6: soltanto Fight.
       [[2,"skill"],[3,"shop"],[4,"skill"]].forEach(([row,type]) => {
         const count = layout[row] || 0;
         if(count) test2NodeTypes[row][Math.floor(Math.random() * count)] = type;
       });
       // Un solo branco per run: sostituisce un Fight, mai un servizio o il boss.
-      const tollCandidates = [1, 5].filter(row => (layout[row] || 0) > 0);
+      const tollCandidates = [5].filter(row => (layout[row] || 0) > 0);
       const tollRow = rand(tollCandidates);
       if(tollRow != null) test2NodeTypes[tollRow][Math.floor(Math.random() * layout[tollRow])] = "event";
     }
@@ -2036,24 +2068,47 @@ PokeMisteryRL.Map = (() => {
 
         // Per ogni nodo fight/boss scegliamo subito il Pokémon da mostrare.
         // Usiamo solo PKM_DB, che è già disponibile nel CORE.
-        if(type === "fight" || type === "boss"){
+        if(type === "fight" || type === "boss" || type === "boss1" || type === "boss2"){
 
           const enemyStage =
-            type === "boss"
+            (type === "boss" || type === "boss1" || type === "boss2")
               ? (PKM_RUN.floor < 3 ? 1 : PKM_RUN.floor < 6 ? 2 : 3)
               : (PKM_RUN.floor < 2 ? 1 : PKM_RUN.floor < 5 ? 2 : 3);
 
-          const candidates = type === "boss"
+          const candidates = (type === "boss" || type === "boss1" || type === "boss2")
             ? getBossEncounter(floorData, enemyStage)
             : getFloorCandidates(floorData, false, enemyStage);
 
+          const preview = p => ({ id:p.id, nome:p.nome, immagine:p.immagine, stage:Number(p.stage) });
           if(candidates.length){
-            const preview = p => ({ id:p.id, nome:p.nome, immagine:p.immagine, stage:Number(p.stage) });
-            if(type === "boss"){
+            if(type === "boss" || type === "boss1" || type === "boss2"){
               node.enemyPreview = preview(candidates[0]);
               node.enemyPreviews = candidates.map(preview);
             }else{
               node.enemyPreview = preview(rand(candidates));
+            }
+          }
+          // Boss 1 è sempre il branco larvale: sei Pokémon distribuiti in
+          // tre ondate da due, indipendentemente dal piano corrente.
+          if(type === "boss1"){
+            const larvae = Object.values(PKM_DB).filter(p => ["weedle", "caterpie"].includes(String(p.nome || "").toLowerCase()));
+            if(larvae.length){
+              node.enemyPreviews = Array.from({length:6}, (_, index) => preview(larvae[index % larvae.length]));
+              node.enemyPreview = node.enemyPreviews[0];
+            }
+          }
+          // Boss 2 affronta dodici Pokémon: sei larve e sei evoluzioni,
+          // distribuiti in tre ondate da quattro.
+          if(type === "boss2"){
+            const byName = name => Object.values(PKM_DB).find(p => String(p.nome || "").toLowerCase() === name);
+            const sequence = [
+              "weedle", "caterpie", "weedle", "caterpie", "weedle", "caterpie",
+              "kakuna", "metapod", "kakuna", "metapod", "kakuna", "metapod"
+            ]
+              .map(byName).filter(Boolean);
+            if(sequence.length === 12){
+              node.enemyPreviews = sequence.map(preview);
+              node.enemyPreview = node.enemyPreviews[0];
             }
           }
         }
@@ -2230,48 +2285,101 @@ PokeMisteryRL.Map = (() => {
   return { buildMap, buildExtraPassageMap, drawMapLines, applyModeMapBackground };
 })();
 PokeMisteryRL.Progress = (() => {
+  const openStartingStarterChoice = () => {
+    if(!isTest2Mode() || !PKM_RUN) return false;
+    const map = $("map");
+    if(!map) return false;
+    if(!Array.isArray(PKM_RUN.startingStarterChoices)){
+      const pool = Object.values(PKM_DB)
+        // Solo forme realmente base: no evoluti (es. Kingler) e nessun
+        // leggendario fuori dalla fascia naturale di uno starter.
+        .filter(pokemon => Number(pokemon.stage) === 1)
+        .filter(pokemon => Number(pokemon.bst) >= 250 && Number(pokemon.bst) <= 480)
+        .sort(() => Math.random() - .5);
+      PKM_RUN.startingStarterChoices = pool.slice(0, 5).map(pokemon => pokemon.id);
+    }
+    const choices = PKM_RUN.startingStarterChoices.map(id => PKM_DB[id]).filter(Boolean);
+    map.className = "test2-starter-choice-map";
+    map.innerHTML = `<section class="test2-starter-choice-panel"><span>⭐ SCEGLI LO STARTER</span><p>Livello 90 · entrerà nello slot S3.</p><div>${choices.map(pokemon => `<button type="button" onclick="chooseCampaignStarter(${Number(pokemon.id)})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b><small>LV 90</small></button>`).join("")}</div></section>`;
+    return true;
+  };
+  const chooseStartingStarter = id => {
+    if(!isTest2Mode() || !PKM_RUN) return false;
+    const starter = createPokemonInstance(id);
+    if(!starter) return false;
+    starter.level = 90;
+    starter.sk = Math.max(1, Number(starter.sk) || 1);
+    PokeMisteryRL_LevelSystem?.rebuildBaseStats?.(starter);
+    PokeMisteryRL_LevelSystem?.setLevel?.(starter, 90);
+    starter.hp = starter.maxHp;
+    PKM_RUN.activePokemon = starter;
+    // Finché non viene scelta la coppia iniziale lo teniamo come riferimento
+    // della scena. Al primo nodo verrà spostato definitivamente in S3.
+    PKM_RUN.pendingStarter = starter;
+    PKM_RUN.teamSlots = [starter];
+    PKM_RUN.originPokemon = starter.id;
+    PKM_RUN.level = starter.level;
+    PKM_RUN.hp = starter.hp;
+    PKM_RUN.maxHp = starter.maxHp;
+    PKM_RUN.starterChosen = true;
+    busy = 0;
+    PokeMisteryRL.UI.refreshBottomPanel?.();
+    const map = $("map");
+    if(map) map.className = "";
+    PokeMisteryRL.UI.render();
+    msg(`${starter.nome} è il tuo starter.`);
+    return true;
+  };
   const openStartingPartnerChoice = (node) => {
     if(!PKM_RUN || !node) return;
-    if(!Array.isArray(node.startingPartners)){
+    if(!Array.isArray(node.startingPartnerPairs)){
       const candidates = Object.values(PKM_DB)
-        .filter(p => Number(p.stage) === 1)
-        .sort(() => Math.random() - .5)
-        .slice(0, 3);
-      node.startingPartners = candidates.map(p => p.id);
+        .filter(p => Number(p.id) !== Number(PKM_RUN.activePokemon?.id))
+        .filter(p => Number(p.bst) >= 400)
+        .sort(() => Math.random() - .5);
+      const fallback = Object.values(PKM_DB)
+        .filter(p => Number(p.id) !== Number(PKM_RUN.activePokemon?.id))
+        .sort(() => Math.random() - .5);
+      const pool = candidates.length >= 6 ? candidates : fallback;
+      node.startingPartnerPairs = Array.from({length:3}, (_, index) =>
+        [pool[index * 2], pool[index * 2 + 1]].filter(Boolean).map(p => p.id)
+      ).filter(pair => pair.length === 2);
     }
-    const choices = node.startingPartners
-      .map(id => PKM_DB[id])
-      .filter(Boolean);
+    const choices = node.startingPartnerPairs
+      .map(pair => pair.map(id => PKM_DB[id]).filter(Boolean))
+      .filter(pair => pair.length === 2);
     if(!choices.length){ next(); return; }
-    modal(`
-      <div class="center starter-picker starting-s2-picker">
-        <h2>⭐ SCEGLI IL PARTNER</h2>
-        <p>Il tuo primo alleato è già al livello 5.</p>
-        <div class="starter-picker-list">
-          ${choices.map(p => `
-            <button type="button" class="starter-choice" onclick="chooseStartingS2(${Number(p.id)})">
-              <img src="${sprite(p.immagine)}" alt="${p.nome}">
-              <b>${p.nome}</b>
-              <small>LV 5</small>
-            </button>
-          `).join("")}
-        </div>
-      </div>
-    `);
+    const choiceMarkup = `<section class="test2-companion-choice-panel"><span>⭐ SCEGLI I COMPAGNI</span><p>Scegli una coppia: entrambi entrano in squadra al livello 90.</p><div>${choices.map(pair => `<button type="button" onclick="chooseStartingPair(${Number(pair[0].id)},${Number(pair[1].id)})"><span><img src="${sprite(pair[0].immagine)}" alt="${pair[0].nome}"><img src="${sprite(pair[1].immagine)}" alt="${pair[1].nome}"></span><b>${pair[0].nome} + ${pair[1].nome}</b><small>LV 90 · LV 90</small></button>`).join("")}</div></section>`;
+    if(isTest2Mode()){
+      const map = $("map");
+      if(map){
+        map.className = "test2-companion-choice-map";
+        map.innerHTML = choiceMarkup;
+        return;
+      }
+    }
+    modal(`<div class="center starter-picker starting-s2-picker">${choiceMarkup}</div>`);
   };
 
-  const chooseStartingS2 = (id) => {
+  const chooseStartingPair = (firstId, secondId) => {
     if(!PKM_RUN) return false;
-    const partner = createPokemonInstance(id);
-    if(!partner) return false;
-    partner.level = 5;
-    partner.sk = Math.max(1, Number(partner.sk) || 1);
-    partner.hp = partner.maxHp;
-    PKM_RUN.secondActive = partner;
-    // Il Partner riceve subito una mossa LV 1 estratta da uno dei suoi typing.
-    PokeMisteryRL_SkillSystem?.assignSkills?.(partner);
+    const partners = [firstId, secondId].map(createPokemonInstance).filter(Boolean);
+    if(partners.length !== 2) return false;
+    partners.forEach(partner => {
+      partner.level = 90;
+      partner.sk = Math.max(1, Number(partner.sk) || 1);
+      PokeMisteryRL_LevelSystem?.rebuildBaseStats?.(partner);
+      PokeMisteryRL_LevelSystem?.setLevel?.(partner, 90);
+      partner.hp = partner.maxHp;
+      PokeMisteryRL_SkillSystem?.assignSkills?.(partner);
+    });
+    const starter = PKM_RUN.pendingStarter || PKM_RUN.activePokemon;
+    PKM_RUN.activePokemon = partners[0];
+    PKM_RUN.secondActive = partners[1];
+    PKM_RUN.teamSlots = [starter];
+    delete PKM_RUN.pendingStarter;
     PokeMisteryRL.UI.refreshBottomPanel();
-    next(`${partner.nome} si unisce alla squadra come Partner.`);
+    next(`${partners[0].nome} e ${partners[1].nome} si uniscono alla squadra.`);
     return true;
   };
 
@@ -2281,8 +2389,34 @@ PokeMisteryRL.Progress = (() => {
     );
     const chansey = chanseyBase ? createPokemonInstance(chanseyBase.id) : null;
     if(!chansey){ rifugio(); return; }
-    const level = Math.max(1, Number(PKM_RUN?.secondActive?.level) || Number(PKM_RUN?.activePokemon?.level) || 1);
+    const level = 1;
     chansey.level = level;
+    if(isTest2Mode()){
+      // L'id della mappa si ripete ad ogni piano: includere il piano evita
+      // che un Rifugio nei piani successivi venga scambiato per già curato.
+      const nodeId = `${Number(PKM_RUN?.floor) || 1}:${PKM_RUN?.map?.[PKM_RUN?.row]?.[PKM_RUN?.col]?.id || "rifugio"}`;
+      if(PKM_RUN.shelterArrivalNodeId !== nodeId){
+        [PKM_RUN.activePokemon, PKM_RUN.secondActive, ...(PKM_RUN.teamSlots || [])].filter(Boolean).forEach(pokemon => {
+          const maxHp = Math.max(1, Number(pokemon.maxHp) || 1);
+          pokemon.hp = Math.min(maxHp, Math.max(0, Number(pokemon.hp) || 0) + Math.ceil(maxHp * .5));
+        });
+        PKM_RUN.shelterArrivalNodeId = nodeId;
+      }
+      PKM_RUN.test2Scene = "campeggio";
+      PokeMisteryRL.UI?.refreshBottomPanel?.();
+      const bottom = $("bottomCampagna");
+      bottom?.querySelectorAll(".test2-shelter-chansey").forEach(entry => entry.remove());
+      if(bottom){
+        bottom.insertAdjacentHTML("beforeend", `<div class="test2-shelter-chansey"><img src="${sprite(chansey.immagine)}" alt="Chansey"><span>♥</span><em>LV ${level}</em></div>`);
+      }
+      const map = $("map");
+      if(map){
+        map.className = "test2-shelter-map";
+        map.innerHTML = `<section class="test2-shelter-panel"><span>♥ RIFUGIO</span><h2>Punto di ristoro</h2><p>La squadra recupera il <b>50%</b> degli HP all'arrivo.</p><div class="test2-shelter-offer"><b>SFIDA DEL RIFUGIO · LV 1</b><small>Vinci e ricevi 2 oggetti curativi.</small></div><div><button type="button" onclick="acceptShelterChallenge()">⚔ ACCETTA SFIDA</button><button type="button" onclick="rejectShelterChallenge()">USA IL RIFUGIO</button></div></section>`;
+      }
+      busy = 0;
+      return;
+    }
     const stats = chansey.stats || {};
     const moves = (chansey.skills || []).map(move =>
       `<li><b>${move.nome || move.name || "Mossa"}</b><small>PWR ${move.pwr ?? move.power ?? "--"}</small></li>`
@@ -2308,11 +2442,29 @@ PokeMisteryRL.Progress = (() => {
     if(!PKM_RUN) return false;
     PKM_RUN.floorChallengeDone ||= {};
     PKM_RUN.floorChallengeDone.rifugio = true;
+    if(isTest2Mode()){
+      $("bottomCampagna")?.classList.remove("test2-node-finish");
+      PokeMisteryRL.UI.refreshBottomPanel();
+      const map = $("map");
+      if(map){
+        map.className = "test2-shelter-map test2-shelter-fight-pending";
+        const title = map.querySelector("h2");
+        const text = map.querySelector("p");
+        if(title) title.textContent = "Sfida in corso";
+        if(text) text.textContent = "Attendi l'esito del combattimento.";
+        map.querySelectorAll("button").forEach(button => { button.disabled = true; });
+      }
+    }
     fight(false);
     return true;
   };
 
   const rejectShelterChallenge = () => {
+    if(isTest2Mode()){
+      busy = 0;
+      rifugio();
+      return true;
+    }
     next("Hai rinunciato alla sfida di Chansey.");
     return true;
   };
@@ -2328,10 +2480,11 @@ PokeMisteryRL.Progress = (() => {
       if(bottom){
         bottom.classList.remove("test2-node-finish");
         bottom.querySelector(".test2-dojo-building")?.remove();
-        bottom.querySelector(".test2-dojo-challenger")?.remove();
+        bottom.querySelectorAll(".test2-dojo-challenger").forEach(entry => entry.remove());
         bottom.insertAdjacentHTML("beforeend", `
           <div class="test2-dojo-challenger">
             <span class="test2-dojo-versus">⚔ VS</span>
+            <em class="test2-challenger-level">LV ${enemy?.level || 1}</em>
             <img src="${sprite(enemy?.immagine || "")}" alt="${enemy?.nome || "Sfidante"}">
           </div>
         `);
@@ -2377,6 +2530,49 @@ PokeMisteryRL.Progress = (() => {
     const reserves = (PKM_RUN?.teamSlots || []).map((pokemon, index) => ({pokemon,index})).filter(entry => entry.pokemon && Number(entry.pokemon.hp) > 0);
     modal(`<div class="center boss-prep"><span>⚠️ BOSS IN ARRIVO</span><h2>Scegli il Partner</h2><p>Puoi cambiare il compagno prima dello scontro.</p><div class="boss-prep-grid">${reserves.map(({pokemon,index}) => `<button type="button" onclick="PokeMisteryRL.Progress.chooseBossCompanion(${index})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b><small>LV ${pokemon.level || 1}</small></button>`).join("") || `<small>Nessuna riserva disponibile.</small>`}</div><button type="button" onclick="closeModal();fight(true)">MANTIENI IL PARTNER ATTUALE</button></div>`);
   };
+  const openBoss1Challenge = node => {
+    if(!isTest2Mode()) { fight(true); return; }
+    PKM_RUN.test2Scene = "tunnel";
+    PokeMisteryRL.UI.refreshBottomPanel?.();
+    const previews = node?.enemyPreviews || [];
+    const larvae = Object.values(PKM_DB).filter(pokemon => ["weedle", "caterpie"].includes(String(pokemon.nome || "").toLowerCase()));
+    const isBoss2 = node?.type === "boss2";
+    // Per Boss 2 il branco appare prima tutto larvale; dopo un istante metà
+    // degli sprite si evolve davanti al giocatore.
+    const group = isBoss2
+      ? Array.from({length:12}, (_, index) => larvae[index % larvae.length])
+      : (previews.length ? Array.from({length:12}, (_, index) => previews[index % previews.length]) : Array.from({length:12}, (_, index) => larvae[index % larvae.length]));
+    const names = [...new Set(previews.map(pokemon => pokemon.nome).filter(Boolean))].join(" + ") || "Pokémon selvatici";
+    const bottom = $("bottomCampagna");
+    bottom?.querySelectorAll(".test2-boss1-group").forEach(entry => entry.remove());
+    bottom?.insertAdjacentHTML("beforeend", `<div class="test2-boss1-group">${group.map(pokemon => `<img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">`).join("")}</div>`);
+    if(isBoss2 && bottom){
+      const evolved = previews.slice(6);
+      setTimeout(() => {
+        if(!bottom.isConnected || !bottom.querySelector(".test2-boss1-group")) return;
+        const sprites = [...bottom.querySelectorAll(".test2-boss1-group img")];
+        sprites.slice(6, 12).forEach((image, index) => {
+          const pokemon = evolved[index];
+          if(!pokemon) return;
+          image.classList.add("is-evolving");
+          image.src = sprite(pokemon.immagine);
+          image.alt = pokemon.nome;
+        });
+        bottom.insertAdjacentHTML("beforeend", `<div class="test2-evolution-flash test2-scene-evolution">EVOLUZIONE!</div>`);
+      }, 900);
+    }
+    const map = $("map");
+    if(map){
+      map.className = "test2-boss-intro-map";
+      map.innerHTML = `<section class="test2-boss-intro"><header><small>PIANO ${PKM_RUN.floor || 1}</small></header><h2>Guardiano del percorso</h2><p>Un gruppo di Pokémon blocca la strada.</p><div class="test2-boss-intro-details"><article><small>AVVERSARI</small><b>${names}</b></article></div><button type="button" onclick="startBoss1Challenge()">⚔ INIZIA LA SFIDA</button></section>`;
+    }
+    busy = 0;
+  };
+  const startBoss1Challenge = () => {
+    $("bottomCampagna")?.querySelectorAll(".test2-boss1-group").forEach(entry => entry.remove());
+    fight(true);
+    return true;
+  };
 
   const isCampaignMode = () =>
     window.PokeMisteryRL_Modes?.get?.(PKM_RUN?.mode)?.famiglia === "campagne";
@@ -2392,6 +2588,20 @@ PokeMisteryRL.Progress = (() => {
       requester:{id:base.id,nome:base.nome,immagine:base.immagine},
       friend:{id:friend.id,nome:friend.nome,immagine:friend.immagine,stage:Number(friend.stage)}
     };
+    if(isTest2Mode()){
+      PKM_RUN.test2Scene = "tunnel";
+      PokeMisteryRL.UI?.refreshBottomPanel?.();
+      const bottom = $("bottomCampagna");
+      bottom?.querySelectorAll(".test2-rescue-request-scene").forEach(entry => entry.remove());
+      bottom?.insertAdjacentHTML("beforeend", `<div class="test2-rescue-request-scene"><img class="test2-rescue-requester" src="${sprite(base.immagine)}" alt="${base.nome}"><img class="test2-rescue-friend" src="${sprite(friend.immagine)}" alt="${friend.nome}"></div>`);
+      const map = $("map");
+      if(map){
+        map.className = "test2-rescue-prompt-map";
+        map.innerHTML = `<section class="test2-rescue-prompt-panel"><span>❓ SOCCORSO</span><h2>${base.nome} chiede aiuto</h2><p>Il suo amico <b>${friend.nome}</b> è bloccato più avanti.</p><div><button type="button" onclick="enterHiddenPassage()">✓ AIUTA</button><button type="button" onclick="declineHiddenPassage()">PROSEGUI</button></div></section>`;
+      }
+      busy = 0;
+      return true;
+    }
     modal(`<div class="center hidden-passage-prompt hidden-passage-recruit"><span>❓ PASSAGGIO NASCOSTO</span><img src="${sprite(base.immagine)}" alt="${base.nome}"><h2>${base.nome} chiede soccorso</h2><p>Il suo amico <b>${friend.nome}</b> è bloccato più avanti. Vuoi attraversare il mini-dungeon per aiutarlo?</p><div><button type="button" onclick="enterHiddenPassage()">✓ ANDIAMO</button><button type="button" onclick="declineHiddenPassage()">PROSEGUI</button></div></div>`);
     return true;
   };
@@ -2414,7 +2624,7 @@ PokeMisteryRL.Progress = (() => {
     const bottom = $("bottomCampagna");
     if(bottom){
       bottom.querySelector(".test2-toll-group")?.remove();
-      bottom.insertAdjacentHTML("beforeend", `<div class="test2-toll-group" aria-label="Branco di ${leader?.nome || "Pokémon"}"><div class="test2-toll-bubble">💰 ${toll}</div>${group.map((pokemon,index) => `<img class="test2-toll-mon toll-mon-${index}" src="${sprite(pokemon?.immagine || leader?.immagine || "eevee.png")}" alt="${pokemon?.nome || leader?.nome || "Pokémon"}">`).join("")}</div>`);
+      bottom.insertAdjacentHTML("beforeend", `<div class="test2-toll-group" aria-label="Branco di ${leader?.nome || "Pokémon"}"><div class="test2-toll-bubble">💰 ${toll}</div>${group.map((pokemon,index) => `<span class="test2-toll-level toll-level-${index}">LV ${pokemon?.level || 1}</span><img class="test2-toll-mon toll-mon-${index}" src="${sprite(pokemon?.immagine || leader?.immagine || "eevee.png")}" alt="${pokemon?.nome || leader?.nome || "Pokémon"}">`).join("")}</div>`);
     }
     const map = $("map");
     if(map){
@@ -2449,6 +2659,7 @@ PokeMisteryRL.Progress = (() => {
       returnCol: PKM_RUN.col,
       returnLastDoneId: PKM_RUN.lastDoneId
     };
+    $("bottomCampagna")?.querySelectorAll(".test2-rescue-request-scene").forEach(entry => entry.remove());
     PokeMisteryRL.Map.buildExtraPassageMap();
     busy = 0;
     closeModal();
@@ -2458,6 +2669,7 @@ PokeMisteryRL.Progress = (() => {
   };
 
   const declineHiddenPassage = () => {
+    $("bottomCampagna")?.querySelectorAll(".test2-rescue-request-scene").forEach(entry => entry.remove());
     busy = 0;
     next("Hai ignorato il passaggio nascosto.");
     return true;
@@ -2521,6 +2733,10 @@ PokeMisteryRL.Progress = (() => {
     }
     // Ogni nodo non-boss prevede un combattimento. Al termine viene aperto
     // l'effetto originale del nodo (negozio, skill, rifugio...), se presente.
+    if(real.type === "boss1" || real.type === "boss2"){
+      openBoss1Challenge(real);
+      return;
+    }
     if(real.type === "boss"){
       openBossPreparation();
       return;
@@ -2536,6 +2752,7 @@ PokeMisteryRL.Progress = (() => {
       bottom?.querySelector(".test2-toll-group")?.remove();
       bottom?.querySelector(".test2-event-item-scene")?.remove();
       bottom?.querySelector(".test2-event-reward-team")?.remove();
+      bottom?.querySelector(".test2-rescue-request-scene")?.remove();
     }
     if(!PKM_RUN)return;
     const current=PKM_RUN.map[PKM_RUN.row]?.[PKM_RUN.col]; if(!current)return;
@@ -2594,7 +2811,9 @@ PokeMisteryRL.Progress = (() => {
       if(afterBattleNodeType === "skill"){ skill(); return; }
       if(afterBattleNodeType === "shop"){ shop(); return; }
     }
-    if(current.type==="boss"){
+    // Boss 1 è il boss conclusivo del piano 3: deve avanzare di piano con
+    // la stessa identica procedura del boss classico, non restare sulla mappa.
+    if(current.type === "boss" || current.type === "boss1"){
       const currentMode = window.PokeMisteryRL_Modes?.get?.(PKM_RUN.mode);
       const finalFloor = Math.max(
         1,
@@ -2644,12 +2863,14 @@ PokeMisteryRL.Progress = (() => {
     PokeMisteryRL.UI.render();
     checkEvolve();
   };
-  return { pick, next, chooseStartingS2, acceptShelterChallenge, rejectShelterChallenge, acceptSkillChallenge, rejectSkillChallenge, chooseBossCompanion, enterHiddenPassage, declineHiddenPassage, payTollEvent, refuseTollEvent };
+  return { pick, next, openStartingStarterChoice, chooseStartingStarter, chooseStartingPair, acceptShelterChallenge, rejectShelterChallenge, acceptSkillChallenge, rejectSkillChallenge, chooseBossCompanion, openBoss1Challenge, startBoss1Challenge, enterHiddenPassage, declineHiddenPassage, payTollEvent, refuseTollEvent };
 })();
 const { pick, next } = PokeMisteryRL.Progress;
-window.chooseStartingS2 = PokeMisteryRL.Progress.chooseStartingS2;
+window.chooseStartingStarter = PokeMisteryRL.Progress.chooseStartingStarter;
+window.chooseStartingPair = PokeMisteryRL.Progress.chooseStartingPair;
 window.acceptShelterChallenge = PokeMisteryRL.Progress.acceptShelterChallenge;
 window.rejectShelterChallenge = PokeMisteryRL.Progress.rejectShelterChallenge;
+window.startBoss1Challenge = PokeMisteryRL.Progress.startBoss1Challenge;
 window.acceptSkillChallenge = PokeMisteryRL.Progress.acceptSkillChallenge;
 window.rejectSkillChallenge = PokeMisteryRL.Progress.rejectSkillChallenge;
 window.enterHiddenPassage = PokeMisteryRL.Progress.enterHiddenPassage;
@@ -2785,15 +3006,14 @@ PokeMisteryRL.Effects = (() => {
   ) => {
 
     const pokemon =
-      target === "s2"
-        ? PKM_RUN?.secondActive
-        : getActivePokemon();
+      target === "s1" ? getActivePokemon()
+      : target === "s2" ? PKM_RUN?.secondActive
+      : target === "s3" ? PKM_RUN?.teamSlots?.[0]
+      : null;
 
     if(!pokemon){
       msg(
-        target === "s2"
-          ? "Partner non equipaggiato."
-          : "Starter non disponibile."
+        "Pokémon non disponibile."
       );
       return false;
     }
@@ -3315,6 +3535,9 @@ const buildSkillCard = (
     const s2 =
       PKM_RUN?.secondActive || null;
 
+    const s3 =
+      PKM_RUN?.teamSlots?.[0] || null;
+
     if(!s1){
       return;
     }
@@ -3331,7 +3554,7 @@ const buildSkillCard = (
       const map = $("map");
       if(!map) return;
       map.className = "test2-dojo-map";
-      map.innerHTML = `<div class="test2-dojo-prize-panel test2-dojo-skill-choice"><span>🥋 PREMIO DEL DOJO</span><h2>Scegli chi potenziare</h2><p>Una Skill crescerà di livello.</p><section class="test2-dojo-skill-list">${buildTest2DojoSkillCard("S1", "s1", s1)}${buildTest2DojoSkillCard("S2", "s2", s2)}</section><button type="button" onclick="next('Dojo completato')">NON POTENZIARE</button></div>`;
+      map.innerHTML = `<div class="test2-dojo-prize-panel test2-dojo-skill-choice"><span>🥋 PREMIO DEL DOJO</span><h2>Scegli chi potenziare</h2><p>Una Skill crescerà di livello.</p><section class="test2-dojo-skill-list">${buildTest2DojoSkillCard("S1", "s1", s1)}${buildTest2DojoSkillCard("S2", "s2", s2)}${buildTest2DojoSkillCard("S3", "s3", s3)}</section><button type="button" onclick="next('Dojo completato')">NON POTENZIARE</button></div>`;
       return;
     }
 
@@ -3406,10 +3629,43 @@ const buildSkillCard = (
     return true;
   };
 
+  const shelterRerollSkillType = (target) => {
+    const pokemon = target === "s1" ? getActivePokemon() : target === "s2" ? PKM_RUN?.secondActive : PKM_RUN?.teamSlots?.[Number(target)];
+    const cost = 100;
+    if(!pokemon) return false;
+    if(Number(PKM_RUN?.bits || 0) < cost){ msg("Servono 100 monete."); return false; }
+    const current = PokeMisteryRL_SkillSystem?.getActiveSkill?.(pokemon) || pokemon.skills?.[0];
+    if(!current){ msg("Nessuna skill disponibile per questo Pokémon."); return false; }
+    const normalizeSkillType = value => String(Array.isArray(value) ? value[0] : value || "normale").split(/[\s,\/]+/)[0].trim().toLowerCase() || "normale";
+    const candidates = (pokemon.__apiMoves || []).filter(move => Number(move.skillLevel) === Number(pokemon.sk || 1) && normalizeSkillType(move.type) !== normalizeSkillType(current.type));
+    if(!candidates.length){ msg("Nessun tipo alternativo disponibile per questa skill."); return false; }
+    const nextSkill = {...rand(candidates)};
+    pokemon.skills = [nextSkill];
+    PKM_RUN.bits -= cost;
+    PokeMisteryRL.UI.refreshBottomPanel();
+    rifugio();
+    return true;
+  };
+
   const rifugio = () => {
     const currentNode = PKM_RUN?.map?.[PKM_RUN?.row]?.[PKM_RUN?.col];
     const challenge = currentNode?.enemyPreview;
     const fought = !!PKM_RUN?.floorChallengeDone?.rifugio;
+    if(isTest2Mode()){
+      PKM_RUN.test2Scene = "campeggio";
+      PokeMisteryRL.UI?.refreshBottomPanel?.();
+      const chansey = Object.values(PKM_DB).find(p => String(p.nome || "").toLowerCase() === "chansey");
+      const bottom = $("bottomCampagna");
+      bottom?.querySelectorAll(".test2-shelter-chansey").forEach(entry => entry.remove());
+      const members = [["S1", getActivePokemon(), "s1"], ["S2", PKM_RUN?.secondActive, "s2"], ["S3", PKM_RUN?.teamSlots?.[0], "0"]].filter(([,pokemon]) => pokemon);
+      const skillType = skill => String(Array.isArray(skill?.type) ? skill.type[0] : skill?.type || "normale").split(/[\s,\/]+/)[0].trim().toLowerCase() || "normale";
+      const map = $("map");
+      if(map){
+        map.className = "test2-shelter-map";
+        map.innerHTML = `<section class="test2-shelter-panel"><span>♥ RIFUGIO</span><h2>Cura e riposo</h2><p>La squadra è stata curata del 50% all'arrivo.</p><div class="test2-shelter-reroll"><b>REROLL TIPO SKILL · 100 ¥</b><small>Scegli un membro per cambiare il tipo della sua skill attiva.</small><div class="test2-shelter-members">${members.map(([label,pokemon,key]) => { const skill = PokeMisteryRL_SkillSystem?.getActiveSkill?.(pokemon) || pokemon.skills?.[0]; return `<button type="button" onclick="shelterRerollSkillType('${key}')"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>${label}</span><b>${pokemon.nome}</b><em>${getTypingBadge(skillType(skill))}</em></button>`; }).join("")}</div></div><button type="button" onclick="next('Hai lasciato il Rifugio.')">CONTINUA</button></section>`;
+      }
+      return;
+    }
     const renderMember = (label, pokemon, key) => {
       if(!pokemon){
         return `
@@ -3456,13 +3712,14 @@ const buildSkillCard = (
       </div>
     `);
   };
-  return { updateHPBar, upgradeSkill, upgradeSkillTarget, rerollSkillTarget, skill, rifugio, shelterHealTarget, shelterRevive };
+  return { updateHPBar, upgradeSkill, upgradeSkillTarget, rerollSkillTarget, skill, rifugio, shelterHealTarget, shelterRevive, shelterRerollSkillType };
 })();
-const { updateHPBar, upgradeSkill, upgradeSkillTarget, rerollSkillTarget, skill, rifugio, shelterHealTarget, shelterRevive } = PokeMisteryRL.Effects;
+const { updateHPBar, upgradeSkill, upgradeSkillTarget, rerollSkillTarget, skill, rifugio, shelterHealTarget, shelterRevive, shelterRerollSkillType } = PokeMisteryRL.Effects;
 window.rerollSkillTarget = rerollSkillTarget;
 window.upgradeSkillTarget = upgradeSkillTarget;
 window.shelterHealTarget = shelterHealTarget;
 window.shelterRevive = shelterRevive;
+window.shelterRerollSkillType = shelterRerollSkillType;
 // #endregion
 // #region 14 - BATTAGLIA | 15 - HUD | 16 - GAMEOVER
 
@@ -3483,9 +3740,7 @@ PokeMisteryRL.Battle = (() => {
 
 
   const getEnemyStats = (id) => {
-
     const p = PKM_DB[id];
-
     if (!p) {
       return {
         hp: 20,
@@ -3496,46 +3751,13 @@ PokeMisteryRL.Battle = (() => {
         spd: 10
       };
     }
-
-    const st =
-      getStatsFromBST(
-        p.bst,
-        p.stage,
-        p.baseStats
-      );
-    // Anche ogni selvatico riceve un profilo distinto e riconoscibile.
+    // Stessa base e stessi roll casuali di un Pokémon appena creato, senza
+    // alcun moltiplicatore da piano o da boss: è davvero un avversario LV 1.
+    const st = getStatsFromBST(p.bst, p.stage, p.baseStats);
     const rolls = PokeMisteryRL.Stats?.rollPokemonStats?.() || {};
-    st.hp = Math.max(1, st.hp + (Number(rolls.hp) || 0));
-    st.atk = Math.max(1, st.atk + (Number(rolls.atk) || 0));
-    st.satk = Math.max(1, st.satk + (Number(rolls.satk) || 0));
-    st.dif = Math.max(1, st.dif + (Number(rolls.dif) || 0));
-    st.sdef = Math.max(1, st.sdef + (Number(rolls.sdef) || 0));
-    st.spd = Math.max(1, st.spd + (Number(rolls.spd) || 0));
-
-    if (PKM_RUN.floor >= 6) {
-
-      const b =
-        1 + (PKM_RUN.floor - 5) * 0.12;
-
-      st.hp =
-        Math.floor(st.hp * b);
-
-      st.atk =
-        Math.floor(st.atk * b);
-
-      st.satk =
-        Math.floor(st.satk * b);
-
-      st.dif =
-        Math.floor(st.dif * b);
-
-      st.sdef =
-        Math.floor(st.sdef * b);
-
-      st.spd =
-        Math.floor(st.spd * b);
-    }
-
+    ["hp", "atk", "satk", "dif", "sdef", "spd"].forEach(key => {
+      st[key] = Math.max(1, (Number(st[key]) || 1) + (Number(rolls[key]) || 0));
+    });
     return st;
   };
 
@@ -3608,12 +3830,6 @@ PokeMisteryRL.Battle = (() => {
 
     const stats =
       getEnemyStats(base.id);
-
-    if(isBoss){
-      ["hp","atk","satk","dif","spd"].forEach(key => {
-        stats[key] = Math.max(1, Math.floor((Number(stats[key]) || 1) * 1.35));
-      });
-    }
 
     const floorLevels =
       window.PokeMisteryRL_Modes?.getFloor?.(
@@ -3693,11 +3909,25 @@ PokeMisteryRL.Battle = (() => {
       }
 
 
-      const node = PKM_RUN?.map?.[PKM_RUN?.row]?.[PKM_RUN?.col];
+    const node = PKM_RUN?.map?.[PKM_RUN?.row]?.[PKM_RUN?.col];
     let previews = (isBoss || node?.type === "event") && Array.isArray(node?.enemyPreviews)
       ? node.enemyPreviews
       : [node?.enemyPreview].filter(Boolean);
     previews = [...previews];
+    // I boss a ondate entrano nello scenario due alla volta.
+    if(node?.type === "boss1"){
+      const larvae = Object.values(PKM_DB).filter(pokemon => ["weedle", "caterpie"].includes(String(pokemon.nome || "").toLowerCase()));
+      if(larvae.length){
+        previews = Array.from({length:6}, (_, index) => {
+          const pokemon = larvae[index % larvae.length];
+          return {id:pokemon.id, nome:pokemon.nome, immagine:pokemon.immagine, stage:Number(pokemon.stage)};
+        });
+      }
+    }
+    const waveBoss = node?.type === "boss1" || node?.type === "boss2";
+    const waveSize = node?.type === "boss2" ? 4 : 2;
+    const boss1WavePreviews = waveBoss ? [previews.slice(waveSize, waveSize * 2), previews.slice(waveSize * 2, waveSize * 3)] : [];
+    if(waveBoss) previews = previews.slice(0, waveSize);
 
     // Il branco è monotipo per specie: lo sprite visto sul percorso coincide
     // sempre con ogni avversario del fight, senza rinforzi casuali diversi.
@@ -3712,7 +3942,7 @@ PokeMisteryRL.Battle = (() => {
       // Test2 non dipende più dal registro delle vecchie modalità: usa il
       // controllo diretto della run, altrimenti il gruppo restava da uno.
       const campaignFight = isTestCampaign();
-      const requiredEnemies = campaignFight && node?.type !== "event"
+      const requiredEnemies = waveBoss ? waveSize : campaignFight && node?.type !== "event"
         ? (Math.random() < .5 ? 3 : 4)
         : previews.length;
       if(campaignFight && previews.length < requiredEnemies){
@@ -3771,7 +4001,9 @@ PokeMisteryRL.Battle = (() => {
           shelterFight: !!enemy.shelterFight,
           shopFight: !!enemy.shopFight,
           skillFight: !!enemy.skillFight,
-          eventFight: node?.type === "event"
+          eventFight: node?.type === "event",
+          boss1WavePreviews,
+          waveBossKind: waveBoss ? node.type : null
         };
         (PokeMisteryRL.Campaigns?.startBattleEffects?.(PKM_RUN.battle) || []).forEach(log);
         showBattleSurface(PokeMisteryRL.UI.buildBattleTemplate(isBoss, PKM_RUN.floor));
@@ -4173,6 +4405,31 @@ PokeMisteryRL.Battle = (() => {
 
   // TURNO AUTOMATICO
 
+  const handleDefeatedEnemies = () => {
+    const battle = PKM_RUN?.battle;
+    if(!battle) return;
+    const nextWave = battle.boss1WavePreviews?.shift?.();
+    if(Array.isArray(nextWave) && nextWave.length){
+      const enemies = nextWave.map(preview => createEnemy(true, preview)).filter(Boolean);
+      if(enemies.length){
+        battle.enemies = enemies;
+        battle.enemy = enemies[0];
+        battle.hp = enemies[0].hp;
+        battle.maxHp = enemies[0].maxHp;
+        battle.stats = enemies[0].stats;
+        battle.enemySlots = [];
+        battle.phase = 0;
+        const wave = 3 - battle.boss1WavePreviews.length;
+        log(`ONDATA ${wave}/3: ${enemies.map(enemy => enemy.nome).join(" + ")}!`);
+        showBattleSurface(PokeMisteryRL.UI.buildBattleTemplate(true, PKM_RUN.floor));
+        PokeMisteryRL.UI.updateBattleHP();
+        setTimeout(autoTurn, isTestCampaign() ? 1250 : 650);
+        return;
+      }
+    }
+    win();
+  };
+
   const autoTurn = () => {
 
     if (!PKM_RUN?.battle) {
@@ -4220,7 +4477,7 @@ PokeMisteryRL.Battle = (() => {
 
     if (enemies.every(p => Number(p?.hp) <= 0)) {
 
-      win();
+      handleDefeatedEnemies();
 
       return;
     }
@@ -4267,7 +4524,7 @@ PokeMisteryRL.Battle = (() => {
       PokeMisteryRL.UI.updateBattleHP();
       PokeMisteryRL.UI.refreshBottomPanel();
       if(!(battle.enemies || []).some(foe => Number(foe?.hp) > 0)){
-        win();
+        handleDefeatedEnemies();
         return;
       }
       (battle.enemies || []).filter(foe => Number(foe.__campaignFrozenTurns) > 0 && Number(foe.hp) > 0)
@@ -4342,13 +4599,17 @@ PokeMisteryRL.Battle = (() => {
 
       // In Test il membro più a destra (ultimo nell'array) protegge il gruppo.
       // Quando va KO, entra automaticamente il precedente.
-      let target = isTestCampaign()
-        ? targets[targets.length - 1]
-        : (s2 && Number(s2.hp) > 0 ? s2 : (s1 && Number(s1.hp) > 0 ? s1 : null));
+      // In Test2 ogni nemico sceglie casualmente un membro ancora vivo:
+      // nessun accanimento fisso sul fronte o su uno slot specifico.
+      let target = isTest2Mode()
+        ? rand(targets)
+        : (isTestCampaign()
+          ? targets[targets.length - 1]
+          : (s2 && Number(s2.hp) > 0 ? s2 : (s1 && Number(s1.hp) > 0 ? s1 : null)));
 
       // Taunt Acciaio: se è presente, il nemico deve puntare il suo portatore.
       const taunter = targets.find(pokemon => (pokemon.tipi || []).includes("acciaio"));
-      if(PokeMisteryRL.Campaigns?.level?.("acciaio") && taunter) target = taunter;
+      if(!isTest2Mode() && PokeMisteryRL.Campaigns?.level?.("acciaio") && taunter) target = taunter;
 
 
       if (!target) {
@@ -4570,17 +4831,33 @@ PokeMisteryRL.Battle = (() => {
 
       if (enemies.every(p => Number(p?.hp) <= 0)) {
 
-        win();
+        handleDefeatedEnemies();
 
         return;
       }
 
 
       const livingEnemies = enemies.filter(p => Number(p?.hp) > 0);
-      const darkTargetsBack = PokeMisteryRL.Campaigns?.level?.("psico");
+      // Test2: priorità per gli slot fisici N1 → N2 → N3 → N4 → N5 → N6.
+      // S3 punta il primo, S2 il secondo e S1 il terzo nemico disponibile.
+      const slotPriority = [0, 2, 4, 1, 3, 5];
+      const orderedEnemies = isTest2Mode()
+        ? [...livingEnemies].sort((left, right) => {
+            const leftIndex = enemies.indexOf(left);
+            const rightIndex = enemies.indexOf(right);
+            const leftSlot = Number(battle.enemySlots?.[leftIndex]);
+            const rightSlot = Number(battle.enemySlots?.[rightIndex]);
+            return (slotPriority.indexOf(leftSlot) + 10) % 10 - (slotPriority.indexOf(rightSlot) + 10) % 10;
+          })
+        : livingEnemies;
+      const playerIndex = getBattlePlayers().indexOf(attacker);
+      const targetRank = playerIndex === 2 ? 0 : playerIndex === 1 ? 1 : 2;
+      const darkTargetsBack = !isTest2Mode() && PokeMisteryRL.Campaigns?.level?.("psico");
       attack(
         attacker,
-        (darkTargetsBack ? livingEnemies[livingEnemies.length - 1] : livingEnemies[0]) || enemy,
+        (isTest2Mode()
+          ? (orderedEnemies[targetRank] || orderedEnemies[0])
+          : (darkTargetsBack ? livingEnemies[livingEnemies.length - 1] : livingEnemies[0])) || enemy,
         true
       );
 
@@ -4588,7 +4865,7 @@ PokeMisteryRL.Battle = (() => {
       if (enemies.every(p => Number(p?.hp) <= 0)) {
 
         setTimeout(
-          win,
+          handleDefeatedEnemies,
           isTestCampaign() ? 1105 : 500
         );
 
@@ -4635,25 +4912,28 @@ PokeMisteryRL.Battle = (() => {
 
 
   const showShelterLevelReward = (reward) => {
-    const slots = (PKM_RUN?.teamSlots || [])
-      .map((pokemon, index) => ({ key:String(index), label:`Squadra ${index + 1}`, pokemon }));
-    if(!slots.some(entry => entry.pokemon)){
-      next("Vittoria contro Chansey!");
+    const itemDb = window.PokeMisteryRL_Items?.DB_ITEMS || window.DB_ITEMS || {};
+    const healingItems = Object.values(itemDb).filter(item => item?.id && String(item.tipo || "").toLowerCase() === "cura");
+    const received = [rand(healingItems), rand(healingItems)].filter(Boolean);
+    PKM_RUN.items ||= [];
+    received.forEach(item => {
+      const owned = PKM_RUN.items.find(entry => String(entry?.id || entry) === String(item.id));
+      if(owned) owned.qty = Math.max(0, Number(owned.qty) || 0) + 1;
+      else PKM_RUN.items.push({id:item.id, qty:1});
+    });
+    PKM_RUN.inventory = PKM_RUN.items;
+    PokeMisteryRL.UI.refreshBottomPanel();
+    if(isTest2Mode()){
+      $("bottomCampagna")?.classList.remove("test2-node-finish");
+      PokeMisteryRL.UI.refreshBottomPanel();
+      const map = $("map");
+      if(map){
+        map.className = "test2-shelter-map";
+        map.innerHTML = `<section class="test2-shelter-panel"><span>♥ SFIDA DEL RIFUGIO</span><h2>Chansey è stata sconfitta!</h2><p>Hai ricevuto <b>2 oggetti curativi</b>.</p><div class="test2-shelter-items">${received.map(item => `<article><img src="${item.immagine || ""}" alt="${item.nome}"><b>${item.nome}</b><small>Oggetto curativo</small></article>`).join("") || "<small>Ricompensa non disponibile.</small>"}</div><button type="button" onclick="next('Premio del Rifugio ottenuto')">CONTINUA</button></section>`;
+      }
       return;
     }
-    modal(`
-      <div class="center shelter-level-reward">
-        <div class="shelter-reward-head"><img src="${sprite("chansey.png")}" alt="Chansey"><div><span>SFIDA DEL RIFUGIO</span><h2>Vittoria contro Chansey!</h2><p>+${reward}¥ · Scegli chi riceve il premio.</p></div></div>
-        <div class="shelter-reward-bonus">✨ <b>+5 LIVELLI</b> a un Pokémon della squadra</div>
-        <div class="shelter-reward-grid">
-          ${slots.map(entry => entry.pokemon ? `
-            <button type="button" class="shelter-reward-card" onclick="PokeMisteryRL.Battle.chooseShelterLevelReward('${entry.key}')">
-              <span>${entry.label}</span><img src="${sprite(entry.pokemon.immagine)}" alt="${entry.pokemon.nome}"><b>${entry.pokemon.nome}</b><small>LV ${entry.pokemon.level || 1} → LV ${(Number(entry.pokemon.level) || 1) + 5}</small>
-            </button>
-          ` : `<div class="shelter-reward-card empty"><span>${entry.label}</span><b>Slot vuoto</b></div>`).join("")}
-        </div>
-      </div>
-    `);
+    next(`Vittoria contro Chansey! Ricevi ${received.length} oggetti curativi.`);
   };
 
   const chooseShelterLevelReward = (key) => {
@@ -4673,15 +4953,15 @@ PokeMisteryRL.Battle = (() => {
       const opponent = PKM_RUN?.lastChallenge?.enemy;
       const bottom = $("bottomCampagna");
       if(bottom && opponent){
-        bottom.querySelector(".test2-dojo-challenger")?.remove();
-        bottom.insertAdjacentHTML("beforeend", `<div class="test2-dojo-challenger"><span class="test2-dojo-versus">⚔ VS</span><img src="${sprite(opponent.immagine)}" alt="${opponent.nome}"></div>`);
+        bottom.querySelectorAll(".test2-dojo-challenger").forEach(entry => entry.remove());
+        bottom.insertAdjacentHTML("beforeend", `<div class="test2-dojo-challenger"><span class="test2-dojo-versus">⚔ VS</span><em class="test2-challenger-level">LV ${opponent.level || 1}</em><img src="${sprite(opponent.immagine)}" alt="${opponent.nome}"></div>`);
         // Dopo il fight S1/S2 restano fermi nella formazione; l'effetto può
         // restare soltanto sullo sfidante sconfitto.
         bottom.querySelectorAll(".test2-dojo-challenger").forEach(entry => entry.classList.add("test2-dojo-victory-shake"));
       }
       if(!map) return;
       map.className = "test2-dojo-map";
-      const targets = [["S1", PKM_RUN?.activePokemon, 0], ["S2", PKM_RUN?.secondActive, 1]].filter(([,pokemon]) => pokemon);
+      const targets = [["S1", PKM_RUN?.activePokemon, 0], ["S2", PKM_RUN?.secondActive, 1], ["S3", PKM_RUN?.teamSlots?.[0], 2]].filter(([,pokemon]) => pokemon);
       map.innerHTML = `<div class="test2-dojo-prize-panel test2-dojo-item-choice"><span>🥋 SFIDA DEL DOJO</span><h2>VITTORIA!</h2><p>+${reward} ¥ · Scegli chi riceve l'oggetto potenziatore.</p><div class="test2-dojo-item-targets">${targets.map(([label,pokemon,index]) => `<button type="button" onclick="PokeMisteryRL.Battle.chooseSkillLevelReward(${index})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>${label}</span><b>${pokemon.nome}</b><small>${(pokemon.tipi || []).map(getTypingBadge).join("")}</small></button>`).join("")}</div></div>`;
       return;
     }
@@ -4737,13 +5017,14 @@ PokeMisteryRL.Battle = (() => {
 
     PKM_RUN.bits += reward;
 
+    const levelRecipients = [starter1, starter2, ...(PKM_RUN.teamSlots || [])]
+      .filter(Boolean)
+      .filter((pokemon, index, members) => members.indexOf(pokemon) === index);
     if(!isChallenge){
-      // Curva media: i nodi normali fanno crescere senza superare subito
-      // il piano seguente; il boss recupera parte del distacco.
-      if (starter1) PokeMisteryRL_LevelSystem.levelUp(starter1, battle.boss ? 3 : 2);
-      if (starter2) PokeMisteryRL_LevelSystem.levelUp(starter2, battle.boss ? 2 : 1);
-      (PKM_RUN.teamSlots || []).filter(Boolean).forEach(pokemon =>
-        PokeMisteryRL_LevelSystem.levelUp(pokemon, battle.boss ? 2 : 1)
+      // Ogni vittoria fa salire tutti i membri di un solo livello: la
+      // formazione cresce sempre in modo uniforme.
+      levelRecipients.forEach(pokemon =>
+        PokeMisteryRL_LevelSystem.setLevel(pokemon, (Number(pokemon.level) || 1) + 1)
       );
     }
 
@@ -4851,11 +5132,15 @@ PokeMisteryRL.Battle = (() => {
       return;
     }
 
-    const levelText = [
-      starter1 ? `${starter1.nome} +${battle.boss ? 3 : 2}` : null,
-      starter2 ? `${starter2.nome} +${battle.boss ? 2 : 1}` : null,
-      (PKM_RUN.teamSlots || []).some(Boolean) ? `Squadra +${battle.boss ? 2 : 1}` : null
-    ].filter(Boolean).join(" · ");
+    const levelText = levelRecipients.map(pokemon => `+1 LIV ${pokemon.nome}`).join(" · ");
+    if(isTest2Mode()){
+      const map = $("map");
+      if(map){
+        map.className = "test2-event-reward-map";
+        map.innerHTML = `<section class="test2-event-reward-panel"><span>✦ VITTORIA</span><h2>${battle.boss ? "Boss sconfitto!" : "Incontro completato!"}</h2><p>Ricompensa: <b>+${reward}¥</b></p><div><b>${levelText}</b><small>Tutta la squadra sale di livello.</small></div><button type="button" onclick="next('Vittoria!')">CONTINUA</button></section>`;
+        return;
+      }
+    }
     modal(`<div class="center battle-reward"><span>✦ VITTORIA</span><h2>${battle.boss ? "Boss sconfitto!" : "Incontro completato!"}</h2><p>Nessun Pokémon ha chiesto di unirsi alla squadra.</p><div class="battle-reward-grid"><div><small>DENARO</small><b>+${reward}¥</b></div><div><small>LIVELLI</small><b>${levelText}</b></div></div><button type="button" onclick="next('Vittoria!')">CONTINUA</button></div>`);
     });
   };
@@ -5332,7 +5617,7 @@ PokeMisteryRL.UI = (() => {
       <span id="test2FloorReadout" class="test2-utility-floor">${PKM_RUN?.extraPassage ? "PASSAGGIO" : `PIANO ${PKM_RUN?.floor || 1}`}</span>
       <button type="button" onclick="toggleInventory()" aria-label="Zaino" title="Zaino">🎒</button>
       <span class="test2-utility-money" title="Soldi">💰 <b id="test2BitsReadout">${Number(PKM_RUN?.bits) || 0}</b></span>
-      <button type="button" onclick="goMenu()" aria-label="Menu" title="Menu">☰</button>
+      <button type="button" onclick="openHomeMenu()" aria-label="Menu" title="Menu">☰</button>
       <button type="button" class="test2-reset" onclick="quickReset()" aria-label="Ricomincia" title="Ricomincia">↻</button>
     </nav>
   `;
@@ -5350,7 +5635,6 @@ PokeMisteryRL.UI = (() => {
     <div id="bottomCampagna" class="bottom-campagna" data-scene="${scene}" aria-label="Formazione squadra">
       <span class="bottom-campagna-title">SQUADRA</span>
       <nav class="test2-formation-order" aria-label="Cambia ordine squadra"><small>SQUADRA</small>${order.map(({pokemon,slotIndex},index) => pokemon ? `<button type="button" class="formation-slot-s${index + 1} ${selected === slotIndex ? "selected" : ""}" draggable="true" ondragstart="PokeMisteryRL.UI.dragTest2FormationSlot(event,${slotIndex})" ondragover="PokeMisteryRL.UI.allowTest2FormationDrop(event)" ondrop="PokeMisteryRL.UI.dropTest2FormationSlot(event,${slotIndex})" onclick="PokeMisteryRL.UI.selectTest2FormationSlot(${slotIndex})" title="${pokemon.nome} · LV ${pokemon.level || 1}: trascina o clicca per cambiare posizione"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>S${index + 1}</span><em>LV ${pokemon.level || 1}</em></button>` : "").join("")}</nav>
-      ${scene === "bazar" ? `<img class="test2-kecleon" src="${sprite("kecleon.png")}" alt="Kecleon">` : ""}
       <div id="test2FormationLine" class="bottom-campagna-formation"></div>
       ${buildTest2UtilityBar()}
     </div>
@@ -5514,15 +5798,13 @@ PokeMisteryRL.UI = (() => {
         // Terminato un nodo, l'arena non conserva avversari o elementi della
         // fight precedente: restano soltanto S1/S2 e le riserve nei loro box.
         test2Bottom.classList.remove('test2-fight-bottom');
-        test2Bottom.querySelector('.test2-enemy-formation')?.remove();
-        test2Bottom.querySelector('.test2-shop-kecleon')?.remove();
+        // Pulizia completa dopo ogni nodo: non lasciare sprite di nemici,
+        // sfidanti o indicatori VS ereditati dalla scena precedente.
+        test2Bottom.querySelectorAll('.test2-enemy-formation,.test2-enemy-sprite,.test2-dojo-challenger,.test2-dojo-reward-opponent,.test2-shop-kecleon,.test2-kecleon-bubble,.test2-fight-versus,.test2-shelter-chansey').forEach(entry => entry.remove());
         test2Bottom.dataset.scene = test2Scene;
-        const existingKecleon = test2Bottom.querySelector('.test2-kecleon');
-        if(test2Scene === 'bazar' && !existingKecleon){
-          test2Bottom.insertAdjacentHTML('afterbegin', `<img class="test2-kecleon" src="${sprite("kecleon.png")}" alt="Kecleon">`);
-        } else if(test2Scene !== 'bazar'){
-          existingKecleon?.remove();
-        }
+        // Kecleon compare soltanto durante l'evento negozio, mai come
+        // mini-sprite permanente nello scenario.
+        test2Bottom.querySelector('.test2-kecleon')?.remove();
       }
       const test2FloorReadout = $('test2FloorReadout');
       const test2BitsReadout = $('test2BitsReadout');
@@ -5531,8 +5813,18 @@ PokeMisteryRL.UI = (() => {
       // I box superiori sono la fonte visiva dell'ordine: dopo ogni scambio
       // ricostruiscili con gli sprite effettivamente assegnati a S1/S2/S3.
       const formationOrder = test2Bottom?.querySelector('.test2-formation-order');
+      const formation = $('test2FormationLine');
+      // Prima della scelta iniziale la scena deve essere completamente vuota:
+      // nessuno sprite o slot della squadra anticipa lo starter disponibile.
+      if(!PKM_RUN.starterChosen){
+        if(formationOrder) formationOrder.innerHTML = '<small>SQUADRA</small>';
+        if(formation) formation.innerHTML = '';
+        return;
+      }
       if(formationOrder){
-        const order = [
+        const order = PKM_RUN.pendingStarter ? [
+          {pokemon:PKM_RUN.teamSlots?.[0], slotIndex:2}
+        ] : [
           {pokemon:PKM_RUN.teamSlots?.[0], slotIndex:2},
           {pokemon:PKM_RUN.activePokemon, slotIndex:0},
           {pokemon:PKM_RUN.secondActive, slotIndex:1}
@@ -5540,9 +5832,10 @@ PokeMisteryRL.UI = (() => {
         const selected = Number(PKM_RUN.test2FormationPick);
         formationOrder.innerHTML = `<small>SQUADRA</small>${order.map(({pokemon,slotIndex},index) => pokemon ? `<button type="button" class="formation-slot-s${index + 1} ${selected === slotIndex ? "selected" : ""}" draggable="true" ondragstart="PokeMisteryRL.UI.dragTest2FormationSlot(event,${slotIndex})" ondragover="PokeMisteryRL.UI.allowTest2FormationDrop(event)" ondrop="PokeMisteryRL.UI.dropTest2FormationSlot(event,${slotIndex})" onclick="PokeMisteryRL.UI.selectTest2FormationSlot(${slotIndex})" title="${pokemon.nome} · LV ${pokemon.level || 1}: trascina o clicca per cambiare posizione"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>S${index + 1}</span><em>LV ${pokemon.level || 1}</em></button>` : "").join("")}`;
       }
-      const formation = $('test2FormationLine');
       const slots = PKM_RUN.teamSlots || [];
-      const roster = [
+      const roster = PKM_RUN.pendingStarter ? [
+        { pokemon:slots[0], slotIndex:2, label:'STARTER' }
+      ] : [
         { pokemon:slots[0], slotIndex:2, label:'COMP. 1' },
         { pokemon:slots[1], slotIndex:3, label:'COMP. 2' },
         { pokemon:PKM_RUN.activePokemon, slotIndex:0, label:'STARTER 1' },
@@ -6212,6 +6505,10 @@ PokeMisteryRL.UI = (() => {
 
       boss: "👹",
 
+      boss1: "👹",
+
+      boss2: "👹",
+
       meat: "🍖",
 
       skill: "📈",
@@ -6267,7 +6564,7 @@ PokeMisteryRL.UI = (() => {
           "node " +
           node.type;
 
-        if(node.type === "fight" || node.type === "boss" || node.type === "event"){
+        if(node.type === "fight" || node.type === "boss" || node.type === "boss1" || node.type === "boss2" || node.type === "event"){
         const category = String(PKM_RUN.categoria || "").toLowerCase();
           if(["bosco", "safari"].includes(category)) cn += " fight-bosco";
           else if(category === "acqua") cn += " fight-acqua";
@@ -6334,6 +6631,8 @@ PokeMisteryRL.UI = (() => {
         const isBattleNode =
           node.type === "fight" ||
           node.type === "boss" ||
+          node.type === "boss1" ||
+          node.type === "boss2" ||
           node.type === "rifugio" ||
           node.type === "shop" ||
           node.type === "skill";
@@ -6342,7 +6641,7 @@ PokeMisteryRL.UI = (() => {
         // Gli altri nodi conservano il proprio sprite.
         const hideTestBattlePreview =
           window.PokeMisteryRL_Modes?.get?.(PKM_RUN?.mode)?.famiglia === "campagne" &&
-          (node.type === "fight" || node.type === "boss");
+          (node.type === "fight" || node.type === "boss" || node.type === "boss1" || node.type === "boss2");
 
         if(hideTestBattlePreview && (node.ok || node.done || activeNode)){
           el.textContent = "";
@@ -6363,6 +6662,7 @@ PokeMisteryRL.UI = (() => {
                 src="${sprite(node.enemyPreview.immagine)}"
                 alt="${node.enemyPreview.nome || "Nemico"}"
               >
+              <em class="map-enemy-level">LV 1</em>
               ${node.enemyPreviews?.[1] ? `
                 <img
                   class="map-enemy-preview-final map-enemy-preview-second"
@@ -6560,7 +6860,10 @@ PokeMisteryRL.UI = (() => {
     }
 
     if(isTest2Mode()){
-      [s1, s2].forEach((pokemon, index) => {
+      // Le tre barre dell'arena usano l'indice reale del combattente:
+      // S1=0, S2=1, S3=2.
+      [PKM_RUN?.activePokemon, PKM_RUN?.secondActive, PKM_RUN?.teamSlots?.[0]]
+        .forEach((pokemon, index) => {
         const bar = $(`test2ArenaPlayer${index}Hp`);
         if(!bar || !pokemon) return;
         const maxHp = Math.max(1, Number(pokemon.maxHp) || 1);
@@ -6868,6 +7171,9 @@ PokeMisteryRL.UI = (() => {
     ];
     const enemies = Array.isArray(battle?.enemies) && battle.enemies.length
       ? battle.enemies : [battle?.enemy].filter(Boolean);
+    const pendingBoss1 = Array.isArray(battle?.boss1WavePreviews)
+      ? battle.boss1WavePreviews.flat().filter(Boolean)
+      : [];
     // Sei posizioni possibili (3 righe × 2 colonne), ma al massimo quattro
     // vengono occupate. Le salviamo nella battaglia per non far saltare gli
     // avversari fra un aggiornamento HP e l'altro.
@@ -6885,13 +7191,13 @@ PokeMisteryRL.UI = (() => {
       return selected;
     });
     if(battle) battle.enemySlots = enemySlots;
-    return `<div id="bottomCampagna" class="bottom-campagna test2-fight-bottom" data-scene="${getTest2BottomScene()}"><div class="bottom-campagna-formation">${players.map(({pokemon, playerIndex, slot}) => {
+    return `<div id="bottomCampagna" class="bottom-campagna test2-fight-bottom" data-scene="${getTest2BottomScene()}"><span class="test2-fight-versus" aria-label="Squadra contro avversari">VS</span><div class="bottom-campagna-formation">${players.map(({pokemon, playerIndex, slot}) => {
       if(!pokemon) return "";
       const maxHp = Math.max(1, Number(pokemon.maxHp) || 1);
       const hpPercent = clamp((Number(pokemon.hp) || 0) / maxHp * 100, 0, 100);
       const isSceneMember = slot === 0 || slot >= 2;
       return `<div class="bottom-campagna-member member-${slot} ${isSceneMember ? "starter" : "ally"} ${Number(pokemon.hp) <= 0 ? "dead" : ""}" data-battle-player="${playerIndex}"><span class="bottom-campagna-types" aria-label="Tipi di ${pokemon.nome}">${bottomTypeBadges(pokemon)}</span><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">${isSceneMember ? `<i class="bottom-campagna-hp"><b id="test2ArenaPlayer${playerIndex}Hp" style="width:${hpPercent}%"></b></i>` : ""}</div>`;
-    }).join("")}</div><div class="test2-enemy-formation">${enemies.map((pokemon, index) => `<div class="test2-enemy-sprite enemy-${index} enemy-slot-${enemySlots[index]} ${Number(pokemon.hp) <= 0 ? "dead" : ""}" data-battle-enemy="${index}"><span class="bottom-campagna-types" aria-label="Tipi di ${pokemon.nome}">${bottomTypeBadges(pokemon)}</span><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"></div>`).join("")}</div>${buildTest2UtilityBar()}</div>`;
+    }).join("")}</div><div class="test2-enemy-formation">${enemies.map((pokemon, index) => `<div class="test2-enemy-sprite enemy-${index} enemy-slot-${enemySlots[index]} ${Number(pokemon.hp) <= 0 ? "dead" : ""}" data-battle-enemy="${index}"><span class="bottom-campagna-types" aria-label="Tipi di ${pokemon.nome}">${bottomTypeBadges(pokemon)}</span><em class="test2-enemy-level">LV ${pokemon.level || 1}</em><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"></div>`).join("")}</div>${pendingBoss1.length ? `<div class="test2-boss1-reserve" aria-label="Larve in attesa">${pendingBoss1.map(pokemon => `<img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">`).join("")}</div>` : ""}${buildTest2UtilityBar()}</div>`;
   };
 
 
@@ -7967,6 +8273,11 @@ window.start = window.startPokemon = PokeMisteryRL.Run.startPokemon;
 window.pick = pick; window.next = next; window.flee = flee;
 window.quickReset = PokeMisteryRL.Run.quickReset;
 window.goMenu = PokeMisteryRL.Run.goMenu;
+window.openHomeMenu = PokeMisteryRL.Run.openHomeMenu;
+window.openGuideMenu = PokeMisteryRL.Run.openGuideMenu;
+window.openGuideCategory = PokeMisteryRL.Run.openGuideCategory;
+window.openGuidePage = PokeMisteryRL.Run.openGuidePage;
+window.showBattleGuide = PokeMisteryRL.Run.showBattleGuide;
 window.skill = skill; window.rifugio = rifugio; window.upgradeSkill = upgradeSkill;
 window.toggleRunLog = toggleRunLog;
 window.showInventory = () => PokeMisteryRL.UI.showInventory();
@@ -8053,8 +8364,8 @@ const shop = () => {
     const bottom = $("bottomCampagna");
     const map = $("map");
     if(bottom){
-      bottom.querySelector(".test2-shop-kecleon")?.remove();
-      bottom.querySelector(".test2-kecleon-bubble")?.remove();
+      // Il negozio non eredita mai personaggi o sprite della scena precedente.
+      bottom.querySelectorAll(".test2-enemy-formation,.test2-toll-group,.test2-recruit-candidate,.test2-dojo-challenger,.test2-shop-kecleon,.test2-kecleon,.test2-kecleon-bubble").forEach(entry => entry.remove());
       bottom.insertAdjacentHTML("beforeend", `<img class="test2-shop-kecleon" src="${sprite("kecleon.png")}" alt="Kecleon">`);
       const warning = theftAttempts ? ["Ehi! Quello è mio!", "Ti sto osservando…", "Ultimo avvertimento!"][Math.min(2,theftAttempts - 1)] : "";
       if(warning) bottom.insertAdjacentHTML("beforeend", `<span class="test2-kecleon-bubble">${warning}</span>`);
