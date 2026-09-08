@@ -1,22 +1,10 @@
-/* Regole di accesso allo zaino: non conosce né modifica scene, HUD o mappa. */
+/* Regola pura: il core decide l'apertura, questa funzione non altera la UI. */
 (() => {
   const canOpen = (run, map) => {
-    // Il flag precedente poteva restare bloccato dopo una ricompensa.
-    // La fonte affidabile è lo stato vivo dell'evento: battaglia o azione occupata.
-    if(run?.mode !== "test2" || run?.battle) return false;
-    return !!map;
+    if(run?.mode !== "test2" || run?.battle || run?.test2BackpackAvailable !== true) return false;
+    if(!map?.classList.contains("test2-horizontal-map")) return false;
+    // Protegge anche l'istante di transizione in cui l'arena è ancora visibile.
+    return !document.querySelector("#bottomContainer .test2-fight-bottom, #bottomContainer #battleFinal, #bottomContainer .bf-field");
   };
   window.PokeMisteryRL.BackpackPolicy = { canOpen };
-  // Il bottone usa un collegamento diretto al modulo UI: non dipende dal
-  // vecchio toggle globale, che può essere sovrascritto da script legacy.
-  const bindBackpackButton = () => {
-    const button = document.getElementById("mapBackpackButton");
-    if(!button) return;
-    button.onclick = event => {
-      event.preventDefault();
-      window.PokeMisteryRL?.UI?.openTestBackpack?.();
-    };
-  };
-  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindBackpackButton, {once:true});
-  else bindBackpackButton();
 })();

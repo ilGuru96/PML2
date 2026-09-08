@@ -3,14 +3,13 @@
    Puoi collassare ogni #region e/o spostarla in un file separato
    ============================================================ */
 
-const PokeMisteryRL = {};
+// Conserva i moduli caricati prima del core (layout, dati e feature).
+const PokeMisteryRL = window.PokeMisteryRL || {};
 window.PokeMisteryRL = PokeMisteryRL;
 const BossWaves = window.PokeMisteryRL_BossWaves;
 // #region 01 - CONFIGURAZIONE + GLOBALI
-PokeMisteryRL.Config = (() => {
-  const SPRITE_BASE_URL = "https://cdn.jsdelivr.net/gh/ilGuru96/spritemon/";
-  return { SPRITE_BASE_URL };
-})();
+PokeMisteryRL.Config = window.PokeMisteryRL_Config;
+if(!PokeMisteryRL.Config) throw new Error("Modulo configurazione non caricato");
 
 // Stato globale condiviso
 let PKM_RUN = null;
@@ -117,6 +116,44 @@ const log = (text, cls = "") => {
 })();
 
 const { $, clamp, rand, sprite, fmt, fmtIV, msg, modal, closeModal, showBattleSurface, log } = PokeMisteryRL.Helpers;
+
+/* ============================================================
+   RUNTIME CONDIVISO
+   I moduli esterni usano questa superficie invece di catturare
+   variabili locali del core. È il confine per Shop/Rifugio/Dojo/Boss.
+   ============================================================ */
+PokeMisteryRL.Runtime = (() => {
+  const runtime = {
+    helpers: { $, clamp, rand, sprite, fmt, fmtIV, msg, modal, closeModal, showBattleSurface, log },
+    getMap: () => $("map"),
+    getBottom: () => $("bottomCampagna"),
+    getShell: () => document.querySelector(".adventure-shell"),
+    isTest2: () => PKM_RUN?.mode === "test2",
+    invoke: (name, ...args) => typeof window[name] === "function" ? window[name](...args) : false
+  };
+
+  Object.defineProperties(runtime, {
+    run: {
+      enumerable: true,
+      get: () => PKM_RUN,
+      set: value => { PKM_RUN = value || null; window.PKM_RUN = PKM_RUN; }
+    },
+    busy: {
+      enumerable: true,
+      get: () => busy,
+      set: value => { busy = Number(value) || 0; }
+    },
+    timer: {
+      enumerable: true,
+      get: () => timer,
+      set: value => { timer = value; }
+    }
+  });
+
+  return runtime;
+})();
+window.PokeMisteryRLRuntime = PokeMisteryRL.Runtime;
+
 let runLogOpen = false;
 const toggleRunLog = () => {
   runLogOpen = !runLogOpen;
@@ -126,381 +163,10 @@ const toggleRunLog = () => {
   if(arrow) arrow.textContent = runLogOpen ? "▲" : "▼";
 };
 
-/* ============================================================
-   RECRUITMENT SYSTEM
-   ============================================================
-   Unificato direttamente nel CORE.
-   CORE 2 chiama showRecruitmentPrompt() dopo una vittoria.
-   Le funzioni sono esportate su window perché i pulsanti delle
-   schermate generate dinamicamente usano onclick.
-   ============================================================ */
-
-window.showRecruitmentPrompt = (
-  pokemon,
-  reward,
-  starter1,
-  starter2
-) => {
-
-  if(!pokemon){
-    return;
-  }
-
-  window._pendingRecruitment = {
-    pokemon,
-    reward,
-    starter1,
-    starter2
-  };
-
-  const freeSlot = isTest2Mode()
-    ? (!PKM_RUN?.secondActive || !PKM_RUN?.teamSlots?.[0])
-    : (PKM_RUN?.teamSlots || []).some(slot => !slot) || !PKM_RUN?.secondActive;
-
-  // In Test2 il candidato è sempre mostrato nello scenario, anche a squadra
-  // completa: sarà l'eventuale scelta successiva a chiedere chi sostituire.
-  if(freeSlot || isTest2Mode()){
-
-    // In Test2 il reclutamento è un evento della scena: il candidato appare
-    // nell'arena e la mappa diventa temporaneamente la scelta del giocatore.
-    if(isTest2Mode()){
-      const bottom = $("bottomCampagna");
-      const map = $("map");
-      if(bottom){
-        // L'evento inizia con la squadra ferma: non eredita la marcia del
-        // nodo precedente, che altrimenti porta S1/S2 fuori dallo scenario.
-        bottom.classList.remove("test2-node-finish");
-        // La formazione standard resta visibile anche durante il reclutamento.
-        bottom.classList.remove("test2-recruit-scene");
-        bottom.querySelector(".test2-recruit-candidate")?.remove();
-        bottom.querySelector(".test2-recruit-allies")?.remove();
-        bottom.insertAdjacentHTML("beforeend", `
-          <div class="test2-recruit-candidate" aria-label="${pokemon.nome}">
-            <img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">
-          </div>
-        `);
-      }
-      if(map){
-        map.classList.add("test2-recruit-choice");
-        map.innerHTML = `
-          <div class="test2-recruit-choice-card">
-            <span class="test2-recruit-eyebrow">INCONTRO SUL PERCORSO</span>
-            <div class="test2-recruit-dialogue-mark">!</div>
-            <h2><b>${pokemon.nome}</b> vorrebbe partecipare alla tua squadra</h2>
-            <p>Vuoi accoglierlo nel gruppo?</p>
-            <div>
-              <button type="button" class="test2-recruit-accept" onclick="window.acceptRecruitment()">✓ ACCETTA</button>
-              <button type="button" class="test2-recruit-reject" onclick="window.rejectRecruitment()">RIFIUTA</button>
-            </div>
-          </div>
-        `;
-      }
-      return;
-    }
-
-    modal(`
-      <div class="center recruitment-offer">
-        <span class="recruitment-kicker">✨ RECLUTAMENTO</span>
-        <div class="recruitment-offer-main">
-          <img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">
-          <div><h2>${pokemon.nome} vorrebbe unirsi a te!</h2><p>Vuole continuare l’avventura al fianco della tua squadra.</p></div>
-        </div>
-        <div class="recruitment-offer-reward">Ricompensa vittoria: <b>+${reward || 0}¥</b></div>
-        <div class="recruitment-offer-actions"><button type="button" onclick="window.acceptRecruitment()">ACCETTA</button><button type="button" onclick="window.rejectRecruitment()">RIFIUTA</button></div>
-      </div>
-    `);
-
-  }else{
-
-    showFullTeamSwitch();
-
-  }
-};
-
-window.compareRecruitment = (
-  key
-) => {
-
-  const pending =
-    window._pendingRecruitment;
-
-  if(!pending){
-    return false;
-  }
-
-  const options =
-    getFullTeamSwitchOptions();
-
-  const option =
-    options.find(
-      item =>
-        String(item.key) ===
-        String(key)
-    );
-
-  if(!option || !option.pokemon){
-    return false;
-  }
-
-  window._pendingReplacement = {
-    key:String(option.key),
-    label:option.label,
-    pokemon:option.pokemon
-  };
-
-  modal(`
-    <div class="recruitment-box recruit-compare">
-
-      <h2>
-        🔄 CONFRONTA
-      </h2>
-
-      <div class="recruit-compare-grid">
-
-        ${recruitCard(
-          option.pokemon,
-          option.label
-        )}
-
-        <div class="recruit-compare-arrow">
-          →
-        </div>
-
-        ${recruitCard(
-          pending.pokemon,
-          "NUOVO POKÉMON"
-        )}
-
-      </div>
-
-      <p class="recruit-compare-note">
-        Il Pokémon a sinistra verrà sostituito
-        da quello nuovo.
-      </p>
-
-      <div class="recruit-compare-actions">
-
-        <button
-          type="button"
-          onclick="window.backRecruitmentSelection()"
-        >
-          INDIETRO
-        </button>
-
-        <button
-          type="button"
-          onclick="window.confirmRecruitReplacement()"
-        >
-          ✓ CONFERMA SOSTITUZIONE
-        </button>
-
-      </div>
-
-    </div>
-  `);
-
-  return true;
-};
-
-window.backRecruitmentSelection = () => {
-
-  if(!window._pendingRecruitment){
-    return;
-  }
-
-  window._pendingReplacement = null;
-
-  showFullTeamSwitch();
-};
-
-window.confirmRecruitReplacement = () => {
-
-  const pending =
-    window._pendingRecruitment;
-
-  const replacement =
-    window._pendingReplacement;
-
-  if(!pending || !replacement){
-    return false;
-  }
-
-  const pokemon =
-    pending.pokemon;
-
-  if(!pokemon){
-    return false;
-  }
-
-  const key =
-    String(replacement.key);
-
-  let ok = false;
-
-  if(key === "s2"){
-
-    if(!PKM_RUN?.secondActive){
-      return false;
-    }
-
-    PKM_RUN.secondActive =
-      pokemon;
-
-    ok = true;
-
-  }else{
-
-    const index =
-      Number(key);
-
-    if(
-      !Number.isInteger(index) ||
-      index < 0 ||
-      index >= 3 ||
-      !PKM_RUN?.teamSlots?.[index]
-    ){
-      return false;
-    }
-
-    PKM_RUN.teamSlots[index] =
-      pokemon;
-
-    ok = true;
-  }
-
-  if(!ok){
-    msg(
-      "Impossibile completare la sostituzione."
-    );
-    return false;
-  }
-
-  renderTeamSlots();
-  PokeMisteryRL.UI.refreshBottomPanel();
-
-  const oldName =
-    replacement.pokemon?.nome ||
-    "Pokémon";
-
-  const newName =
-    pokemon.nome ||
-    "Pokémon";
-
-  window._pendingRecruitment = null;
-  window._pendingReplacement = null;
-  window.next(`${newName} ha sostituito ${oldName}.`);
-
-  return true;
-};
-
-window.confirmTest2RecruitReplacement = key => {
-  const option = getFullTeamSwitchOptions().find(entry => String(entry.key) === String(key));
-  if(!option?.pokemon) return false;
-  window._pendingReplacement = {key:String(option.key), label:option.label, pokemon:option.pokemon};
-  return window.confirmRecruitReplacement();
-};
-
-window.acceptRecruitment = () => {
-
-  const pending =
-    window._pendingRecruitment;
-
-  if(!pending){
-    return;
-  }
-
-  const test2TeamFull = isTest2Mode() && !!PKM_RUN?.activePokemon && !!PKM_RUN?.secondActive && !!PKM_RUN?.teamSlots?.[0];
-  const added = test2TeamFull ? false : PokeMisteryRL.TeamRoster.recruitPokemon(pending.pokemon);
-
-  if(!added){
-    showFullTeamSwitch();
-    return;
-  }
-
-  const name =
-    pending.pokemon?.nome ||
-    "Pokémon";
-
-  window._pendingRecruitment = null;
-
-  if(isTest2Mode()){
-    window.finishTest2RecruitmentChoice(`${name} è entrato nella squadra.`);
-    return;
-  }
-  PokeMisteryRL.UI.refreshBottomPanel();
-  window.next(`${name} è entrato nella squadra.`);
-};
-
-window.rejectRecruitment = () => {
-
-  const pending =
-    window._pendingRecruitment;
-
-  if(!pending){
-    return;
-  }
-
-  window._pendingRecruitment = null;
-  window._pendingReplacement = null;
-  // Il rifiuto non interrompe più il flusso con una schermata separata.
-  if(isTest2Mode()){
-    window.finishTest2RecruitmentChoice("Vittoria!");
-    return;
-  }
-  window.next("Vittoria!");
-};
-
-// Dopo la decisione, il candidato svanisce e S1/S2 attraversano il tratto.
-window.finishTest2RecruitmentChoice = (message) => {
-  const bottom = $("bottomCampagna");
-  if(!bottom || !isTest2Mode()){
-    window.next(message);
-    return;
-  }
-  if(bottom.dataset.recruitLeaving === "1") return;
-  bottom.dataset.recruitLeaving = "1";
-  bottom.querySelector(".test2-recruit-candidate")?.remove();
-  bottom.classList.add("test2-node-finish");
-  setTimeout(() => window.next(message), 1060);
-};
-
-// #endregion
+// Il reclutamento vive in core/features/recruitment.js.
 // #region 03 - TIPOLOGIE
-PokeMisteryRL.Types = (() => {
-  const TYPE_CHART = {
-    normale:{}, fuoco:{erba:2,ghiaccio:2,coleottero:2,acciaio:2,fuoco:.5,acqua:.5,roccia:.5,drago:.5},
-    acqua:{fuoco:2,terra:2,roccia:2,acqua:.5,erba:.5,drago:.5},
-    erba:{acqua:2,terra:2,roccia:2,fuoco:.5,erba:.5,veleno:.5,volante:.5,coleottero:.5,drago:.5,acciaio:.5},
-    elettro:{acqua:2,volante:2,erba:.5,elettro:.5,drago:.5,terra:0},
-    ghiaccio:{erba:2,terra:2,volante:2,drago:2,fuoco:.5,acqua:.5,ghiaccio:.5,acciaio:.5},
-    lotta:{normale:2,ghiaccio:2,roccia:2,buio:2,acciaio:2,veleno:.5,volante:.5,psico:.5,coleottero:.5,folletto:.5,spettro:0},
-    veleno:{erba:2,folletto:2,veleno:.5,terra:.5,roccia:.5,spettro:.5,acciaio:0},
-    terra:{fuoco:2,elettro:2,veleno:2,roccia:2,acciaio:2,erba:.5,coleottero:.5,volante:0},
-    volante:{erba:2,lotta:2,coleottero:2,elettro:.5,roccia:.5,acciaio:.5},
-    psico:{lotta:2,veleno:2,psico:.5,acciaio:.5,buio:0},
-    coleottero:{erba:2,psico:2,buio:2,fuoco:.5,lotta:.5,volante:.5,spettro:.5,acciaio:.5,folletto:.5},
-    roccia:{fuoco:2,ghiaccio:2,volante:2,coleottero:2,lotta:.5,terra:.5,acciaio:.5},
-    spettro:{psico:2,spettro:2,buio:.5,normale:0},
-    drago:{drago:2,acciaio:.5,folletto:0},
-    buio:{psico:2,spettro:2,lotta:.5,buio:.5,folletto:.5},
-    acciaio:{ghiaccio:2,roccia:2,folletto:2,fuoco:.5,acqua:.5,elettro:.5,acciaio:.5},
-    folletto:{lotta:2,drago:2,buio:2,fuoco:.5,veleno:.5,acciaio:.5}
-  };
-  const getPokemonTypes = (p) =>!p? [] : Array.isArray(p.tipi)? p.tipi.map(t=>String(t).trim().toLowerCase()).filter(Boolean) : [];
-  const getTypeMultiplier = (atkType, defTypes) => {
-    if (!atkType ||!Array.isArray(defTypes)) return 1;
-    const chart = TYPE_CHART[String(atkType).trim().toLowerCase()];
-    if (!chart) return 1;
-    return defTypes.reduce((m, t) => m * (chart[String(t).trim().toLowerCase()]?? 1), 1);
-  };
-  const getMultLabel = (m) => m===0? "INEFFICACE" : m>=2? "SUPEREFFICACE" : m<=0.5? "POCO EFFICACE" : "";
-  const getTypingBadge = (type) => {
-    const key = String(type||"").trim().toLowerCase(); if(!key) return "";
-    const colors = {normale:"#d2d2bdff",fuoco:"#F08030",acqua:"#6890F0",erba:"#78C850",elettro:"#F8D030",ghiaccio:"#98D8D8",lotta:"#C03028",veleno:"#A040A0",terra:"#E0C068",volante:"#A890F0",psico:"#F85888",coleottero:"#A8B820",roccia:"#B8A038",spettro:"#705898",drago:"#7038F8",buio:"#705848",acciaio:"#B8B8D0",folletto:"#EE99AC"};
-    return `<span class="type-badge type-${key}" style="background:${colors[key]||"#555"}">${key.toUpperCase()}</span>`;
-  };
-  return { TYPE_CHART, getPokemonTypes, getTypeMultiplier, getMultLabel, getTypingBadge };
-})();
+PokeMisteryRL.Types = window.PokeMisteryRL_Types;
+if(!PokeMisteryRL.Types) throw new Error("Modulo tipi non caricato");
 const { getPokemonTypes, getTypeMultiplier, getMultLabel, getTypingBadge } = PokeMisteryRL.Types;
 // #endregion
 // #region 04 - DATABASE POKEMON - LOADER FIX PER DB_PKM SENZA.js
@@ -954,39 +620,11 @@ const createRunState = (starter) => ({
     msg(`${starter.nome} pronto! ${rolls}`);
   };
   const quickReset = () => { if(busy) return; startPokemon(PKM_RUN?.originPokemon, PKM_RUN?.mode||"torre"); };
-  // Le copie della guida vivono in outputs/texts.js: qui resta soltanto la struttura.
-  const GUIDE_COPY = window.PokeMisteryRL_GuideCopy || { it:{} };
-  const guideText = key => GUIDE_COPY.it[key] || key;
-  const GUIDE_SECTIONS = {
-    basics: ["start", "levels"],
-    combat: ["targeting", "turns", "moves"],
-    team: ["formation", "health", "items"],
-    route: ["nodes", "shelter", "shop", "events"]
-  };
-  const GUIDE_ICONS = { basics:"✦", combat:"⚔", team:"◈", route:"⌘" };
-  const guideBackButton = action => `<button type="button" class="guide-back" onclick="${action}">${guideText("back")}</button>`;
-  const guideTargetVisual = `<div class="guide-target-visual" aria-label="Schema priorità bersagli"><div class="guide-allies"><i>S3</i><i>S2</i><i>S1</i></div><b>VS</b><div class="guide-enemies"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i></div></div><ol class="guide-priority"><li><span>S3</span>Primo nemico libero</li><li><span>S2</span>Secondo nemico libero</li><li><span>S1</span>Terzo nemico libero</li><li><span>?</span>Nemici: bersaglio casuale</li></ol>`;
-  const guideNodeVisual = `<ul class="guide-priority guide-node-list"><li><span>⚔</span><b>Fight</b><small>KO normali = +1 livello.</small></li><li><span>♥</span><b>Rifugio</b><small>Cura e cambio tipo mossa.</small></li><li><span>🏪</span><b>Shop</b><small>Oggetti e scaffali persistenti.</small></li><li><span>🥋</span><b>Dojo</b><small>Potenzia una mossa.</small></li><li><span>?</span><b>Evento</b><small>Scelta, aiuto o ricompensa.</small></li><li><span>👹</span><b>Boss</b><small>Chiude il piano.</small></li></ul>`;
-  const openGuidePage = (category, page) => {
-    const title = guideText(`${page}Title`);
-    const text = guideText(`${page}Text`);
-    const visual = page === "targeting" ? guideTargetVisual : page === "nodes" ? guideNodeVisual : "";
-    modal(`<section class="center guide-panel guide-detail"><header><span>${GUIDE_ICONS[category]} ${guideText(category)}</span><h2>${title}</h2></header><div class="guide-copy">${visual}<p>${text}</p></div>${guideBackButton(`openGuideCategory('${category}')`)}</section>`);
-  };
-  const openGuideCategory = category => {
-    const pages = GUIDE_SECTIONS[category] || [];
-    modal(`<section class="center guide-panel guide-category"><header><span>${GUIDE_ICONS[category]} ${guideText("guide")}</span><h2>${guideText(category)}</h2></header><div class="guide-page-list">${pages.map((page,index) => `<button type="button" onclick="openGuidePage('${category}','${page}')"><i>${String(index + 1).padStart(2,"0")}</i><span><b>${guideText(page)}</b><small>${guideText(`${page}Title`)}</small></span><em>›</em></button>`).join("")}</div>${guideBackButton("openGuideMenu()")}</section>`);
-  };
-  const openGuideMenu = () => {
-    const categories = ["basics", "combat", "team", "route"];
-    modal(`<section class="center guide-panel guide-home"><header><span>✦ ${guideText("guide")}</span><h2>${guideText("choose")}</h2></header><div class="guide-category-list">${categories.map(category => `<button type="button" onclick="openGuideCategory('${category}')"><i>${GUIDE_ICONS[category]}</i><span><b>${guideText(category)}</b><small>${guideText(`${category}Hint`)}</small></span><em>›</em></button>`).join("")}</div>${guideBackButton("openHomeMenu()")}</section>`);
-  };
-  const showBattleGuide = openGuideMenu;
   const openHomeMenu = () => {
     modal(`<section class="center home-menu"><span>MENU</span><h2>Cosa vuoi fare?</h2><div><button type="button" onclick="openGuideMenu()">GUIDA</button><button type="button" onclick="goMenu()">HOME</button></div><button type="button" onclick="closeModal()">ANNULLA</button></section>`);
   };
   const goMenu = () => { clearTimeout(timer); if(PKM_RUN?.battle) PKM_RUN.battle=null; $("modal")?.classList.add("hidden"); $("game")?.classList.add("hidden"); $("menu")?.classList.remove("hidden"); };
-  return { createRunState, buildRunSkeleton, startPokemon, quickReset, openHomeMenu, openGuideMenu, openGuideCategory, openGuidePage, showBattleGuide, goMenu };
+  return { createRunState, buildRunSkeleton, startPokemon, quickReset, openHomeMenu, goMenu };
 })();
 
 // Gli oggetti appartengono al Pokémon, non alla posizione Starter/Partner.
@@ -1076,46 +714,8 @@ function isTestCampaign(){
 function isTest2Mode(){ return PKM_RUN?.mode === "test2"; }
 
 // Carte Test: ogni effetto vale solo per le mosse del typing indicato.
-PokeMisteryRL.TypeCards = (() => {
-  const cards = {
-    fuoco:["Braci Vive","+10% danno Fuoco","+20% danno e bruciatura"], acqua:["Marea Salva","Cura 4% HP","Cura 8% HP"], erba:["Radici Profonde","Cura 2% HP","Cura 4% HP"], elettro:["Scossa Paralizzante","Stordisce","Fa perdere il turno"], normale:["Colpo Jolly","+10% danno","+20% danno"], volante:["Passo di Vento","+10% evasione","+25% evasione"], veleno:["Tossina Persistente","Applica veleno","Si diffonde al KO"], terra:["Fango Frenante","Applica SPD ↓","Rallenta del 40%"], roccia:["Corazza di Pietra","-8% danni","-15% danni e riflesso"], lotta:["Ritmo da Combattimento","Terzo colpo +30%","Terzo colpo +70%"], psico:["Mente Accelerata","15% doppio colpo","30% doppio colpo"], buio:["Colpo di Grazia","+25% sotto 50% HP","+60% sotto 50% HP"], spettro:["Ritorsione Oscura","Riflette 10%","Riflette 25% e maledice"], acciaio:["Guardia Ferrea","-10% danni","-20% danni e scudo"], ghiaccio:["Morso Gelido","Rallenta","+15% danni ai rallentati"], drago:["Soffio Travolgente","25% al nemico dietro","50% al nemico dietro"], folletto:["Luce Curativa","Cure +20%","Cure +40%"], coleottero:["Sciame di Riserva","Clone verde 30% HP","Clone verde 70% HP"]
-  };
-  const roster = () => [PKM_RUN?.activePokemon, PKM_RUN?.secondActive, ...(PKM_RUN?.teamSlots || [])].filter(Boolean).slice(0,4);
-  const level = type => isTestCampaign() ? Math.min(10, Number(PKM_RUN?.typeCards?.[type]) || 0) : 0;
-  const has = (type, min = 1) => level(type) >= min;
-  const collector = () => Object.entries(PKM_RUN?.typeCards || {}).filter(([, value]) => value > 0).map(([type, value]) => `<div class="type-card-collector-entry" title="${cards[type]?.[0] || type} · LIV ${Math.min(10,value)}">${getTypingBadge(type)}<b>×${Math.min(10,value)}</b></div>`).join("") || `<small>Nessuna carta raccolta</small>`;
-  const draw = () => {
-    const pool = Object.keys(cards);
-    const choices = [];
-    while(choices.length < 3 && pool.length){
-      const weighted = pool.map(type => ({type, weight:1 + level(type) * 2}));
-      let roll = Math.random() * weighted.reduce((sum, entry) => sum + entry.weight, 0);
-      const chosen = weighted.find(entry => (roll -= entry.weight) <= 0)?.type || pool[0];
-      choices.push(chosen);
-      pool.splice(pool.indexOf(chosen), 1);
-    }
-    return choices;
-  };
-  const show = () => {
-    if(!isTestCampaign()) return false;
-    const choices = draw();
-    modal(`<div class="center floor-upgrade-modal"><span>FINE PIANO</span><h2>Scegli una carta</h2><div class="floor-collector"><b>RACCOGLITORE CARTE</b><div>${collector()}</div></div><div class="floor-upgrade-cards">${choices.map(type => { const card = cards[type]; const nextLevel = Math.min(10, level(type) + 1); const effect = nextLevel === 1 ? card[1] : card[2]; return `<button type="button" class="floor-upgrade-card ${type}" onclick="chooseTypeCard('${type}')"><strong>${getTypingBadge(type)}</strong><b>${card[0]}</b><small>LIV ${nextLevel} · ${effect}</small></button>`; }).join("")}</div><div class="type-card-choice-actions"><button type="button" class="type-card-reroll" onclick="rerollTypeCards()">↻ REROLL</button><button type="button" class="type-card-skip" onclick="skipTypeCards()">SALTA</button></div></div>`);
-    return true;
-  };
-  const choose = type => {
-    if(!cards[type] || !isTestCampaign()) return false;
-    PKM_RUN.typeCards ||= {};
-    PKM_RUN.typeCards[type] = Math.min(10, (Number(PKM_RUN.typeCards[type]) || 0) + 1);
-    PokeMisteryRL.UI?.refreshBottomPanel?.();
-    next(`${cards[type][0]} · LIV ${level(type)} acquisita.`);
-    return true;
-  };
-  const openCollector = () => {
-    const activeCards = Object.entries(PKM_RUN?.typeCards || {}).filter(([, value]) => value > 0);
-    modal(`<div class="center floor-upgrade-modal collector-view"><span>BONUS DELLA RUN</span><h2>Carte raccolte</h2><div class="type-card-bonus-list">${activeCards.length ? activeCards.map(([type, value]) => { const card = cards[type]; const currentLevel = Math.min(10,value); const users = roster().filter(pokemon => (pokemon.tipi || []).includes(type)); return `<div class="type-card-bonus-row"><div class="type-card-bonus-copy">${getTypingBadge(type)}<b>${card[0]}</b><small>LIV ${currentLevel} · ${currentLevel === 1 ? card[1] : card[2]}</small></div><div class="type-card-users">${users.length ? users.map(pokemon => `<img src="${sprite(pokemon.immagine)}" title="${pokemon.nome}" alt="${pokemon.nome}">`).join("") : `<small>Nessun utilizzatore</small>`}</div></div>`; }).join("") : `<small>Nessuna carta raccolta</small>`}</div><button type="button" onclick="closeModal()">CHIUDI</button></div>`);
-  };
-  return { cards, level, has, show, choose, openCollector };
-})();
+PokeMisteryRL.TypeCards = window.PokeMisteryRL_TypeCards;
+if(!PokeMisteryRL.TypeCards) throw new Error("Modulo carte tipo non caricato");
 window.chooseTypeCard = type => PokeMisteryRL.TypeCards?.choose?.(type);
 window.rerollTypeCards = () => PokeMisteryRL.TypeCards?.show?.();
 window.skipTypeCards = () => next("Nessuna carta scelta.");
@@ -1529,6 +1129,18 @@ PokeMisteryRL.Evo = (() => {
     evoPromptShownFloor = `${PKM_RUN.floor}:${active.id}`;
 
     busy = 1;
+    if(isTest2Mode()){
+      PKM_RUN.test2EvolutionActive = true;
+      const sceneSlot = candidate.key === "s1" ? 0 : candidate.key === "s2" ? 1 : Number(String(candidate.key).replace("team-", "")) + 2;
+      document.querySelector(`#bottomCampagna [data-scene-item-target="${sceneSlot}"]`)?.classList.add("test2-is-evolving");
+      const map = $("map");
+      if(map){
+        map.className = "test2-evolution-map";
+        map.innerHTML = `<section class="test2-evolution-scene" aria-label="Evoluzione di ${active.nome}"><span>✦ EVOLUZIONE ✦</span><h2>${active.nome} si sta evolvendo...</h2><div class="test2-evolution-stage"><img class="test2-evolution-from" src="${sprite(active.immagine)}" alt="${active.nome}"><i>✦</i><img class="test2-evolution-to" src="${sprite(target.immagine)}" alt="${target.nome}"></div><small>LV ${active.level || 1} · ${active.nome} → ${target.nome}</small></section>`;
+      }
+      setTimeout(() => evolvePokemon(target.id, candidate.key), 350);
+      return;
+    }
 
     modal(`
       <div class="center evolution-modal">
@@ -1559,6 +1171,8 @@ PokeMisteryRL.Evo = (() => {
   const closeEvolutionPrompt = () => {
 
     closeModal();
+    delete PKM_RUN?.test2EvolutionActive;
+    document.querySelectorAll("#bottomCampagna .test2-is-evolving").forEach(element => element.classList.remove("test2-is-evolving"));
 
     busy = 0;
 
@@ -1580,7 +1194,7 @@ PokeMisteryRL.Evo = (() => {
     if(!active || !target)
       return;
 
-    const box = document.querySelector(".evolution-modal");
+    const box = document.querySelector(".evolution-modal, .test2-evolution-scene");
     if(box?.dataset.evolving === "true") return;
     if(box){
       box.dataset.evolving = "true";
@@ -1608,6 +1222,17 @@ PokeMisteryRL.Evo = (() => {
 
     active.hp = active.maxHp;
 
+    if(isTest2Mode()){
+      PokeMisteryRL.UI.refreshBottomPanel?.();
+      document.querySelectorAll("#bottomCampagna .test2-is-evolving").forEach(element => element.classList.remove("test2-is-evolving"));
+      const map = $("map");
+      if(map){
+        map.className = "test2-evolution-map";
+        map.innerHTML = `<section class="test2-evolution-scene test2-evolution-complete" aria-label="Evoluzione completata"><span>✦ EVOLUZIONE COMPLETATA ✦</span><div class="test2-evolution-stage"><img src="${sprite(target.immagine)}" alt="${target.nome}"></div><h2>${old?.nome || "Pokémon"} è diventato ${target.nome}!</h2><button type="button" onclick="PokeMisteryRL.Evo.closeEvolutionPrompt()">CONTINUA</button></section>`;
+      }
+      msg(`◈ ${old?.nome||"Pokémon"} → ${target.nome} ◈`);
+      return;
+    }
     PokeMisteryRL.UI.render();
     msg(`◈ ${old?.nome||"Pokémon"} → ${target.nome} ◈`);
     busy = 0;
@@ -1699,6 +1324,10 @@ PokeMisteryRL.Team = PokeMisteryRL.Team || (() => {
   };
 
 })();
+
+// Compatibilità con le vecchie chiamate globali: la funzione vive nel
+// modulo Team, non nello scope esterno del core.
+const getTeamStats = () => PokeMisteryRL.Team.getTeamStats();
 
 
 const {
@@ -2034,8 +1663,9 @@ PokeMisteryRL.Map = (() => {
     // Riga 0 = 1 nodo di partenza, con ESATTAMENTE 3 uscite verso la riga 1.
     // Test2 è un percorso in due tratte: 1/2/3/3 e poi 3/3/2/1.
     // Tutte le colonne da tre condividono le stesse tre altezze visive.
+    const test2Profile = window.PokeMisteryRL?.Test2MapProfile;
     const layout = isTest2Mode()
-      ? [1, 2, 3, 3, 3, 3, 2, 1]
+      ? [...(test2Profile?.layout || [1, 2, 3, 3, 3, 3, 2, 1])]
       : [1, 3, 4, 5, 3, 2, 1];
     PKM_RUN.map = [];
     if(isTest2Mode()) PKM_RUN.test2MapPhase = 0;
@@ -2044,22 +1674,29 @@ PokeMisteryRL.Map = (() => {
 
     // Percorso core: otto righe fisse e scelte leggibili. Le feature esterne
     // possono aggiungere nodi propri, ma non alterano questa struttura base.
-    const test2NodeTypes = isTest2Mode() ? layout.map(count => Array(count).fill("fight")) : null;
+    const test2NodeTypes = isTest2Mode()
+      ? (test2Profile?.buildNodeTypes?.({ floor: PKM_RUN?.floor }) || layout.map(count => Array(count).fill("fight")))
+      : null;
     if(test2NodeTypes){
-      const choose = choices => choices[Math.floor(Math.random() * choices.length)];
-      // Piano 1: scelta della coppia. Dai piani successivi: negozio iniziale.
-      test2NodeTypes[0][0] = Number(PKM_RUN.floor) === 1 ? "free" : "shop";
-      // Righe 2, 3, 5 e 6: soltanto le alternative indicate nel percorso.
-      test2NodeTypes[1] = test2NodeTypes[1].map(() => choose(["fight", "event"]));
-      test2NodeTypes[2] = test2NodeTypes[2].map(() => choose(["fight", "event", "skill"]));
-      // Riga 4: un Negozio fisso fra tre nodi, gli altri due sono Fight.
-      test2NodeTypes[3].fill("fight");
-      test2NodeTypes[3][Math.floor(Math.random() * test2NodeTypes[3].length)] = "shop";
-      test2NodeTypes[4] = test2NodeTypes[4].map(() => choose(["fight", "event", "skill"]));
-      test2NodeTypes[5] = test2NodeTypes[5].map(() => choose(["fight", "event"]));
-      // Riga 7: doppio Rifugio. Riga 8: boss standard del core.
-      test2NodeTypes[6].fill("rifugio");
-      test2NodeTypes[layout.length - 1][0] = "boss";
+      // Fallback completo per build locali che non hanno ancora il profilo esterno.
+      if(!test2Profile?.buildNodeTypes){
+        const choose = choices => choices[Math.floor(Math.random() * choices.length)];
+        test2NodeTypes[0][0] = Number(PKM_RUN.floor) === 1 ? "free" : "shop";
+        test2NodeTypes[1] = test2NodeTypes[1].map(() => choose(["fight", "event"]));
+        test2NodeTypes[2] = test2NodeTypes[2].map(() => choose(["fight", "event", "skill"]));
+        test2NodeTypes[3].fill("fight");
+        test2NodeTypes[3][Math.floor(Math.random() * test2NodeTypes[3].length)] = "shop";
+        test2NodeTypes[4] = test2NodeTypes[4].map(() => choose(["fight", "event", "skill"]));
+        test2NodeTypes[5] = test2NodeTypes[5].map(() => choose(["fight", "event"]));
+        test2NodeTypes[6].fill("rifugio");
+        test2NodeTypes[layout.length - 1][0] = "boss";
+      }
+      // Riga 2 (indice 1): scorciatoie di test per le nuove scene.
+      // Sono subito raggiungibili dopo l'avvio e non alterano le altre righe.
+      if(test2NodeTypes[1]?.length >= 2){
+        test2NodeTypes[1][0] = "shop";
+        test2NodeTypes[1][1] = "rifugio";
+      }
     }
     // Le altre modalità mantengono la distribuzione precedente.
     const dojoCandidates = [];
@@ -2337,6 +1974,7 @@ PokeMisteryRL.Progress = (() => {
     }
     const choices = PKM_RUN.startingStarterChoices.map(id => PKM_DB[id]).filter(Boolean);
     map.className = "test2-starter-choice-map";
+    map.removeAttribute("style");
     if(!choices.length) return false;
     armStartSelection("starter", choices.map(pokemon => Number(pokemon.id)));
     const bottom = $("bottomContainer");
@@ -2372,8 +2010,11 @@ PokeMisteryRL.Progress = (() => {
     busy = 0;
     PokeMisteryRL.UI.refreshBottomPanel?.();
     const map = $("map");
-    if(map) map.className = "";
+    if(map){ map.className = ""; map.removeAttribute("style"); }
     PokeMisteryRL.UI.render();
+    // La scena viene appena ricostruita: aggiorna ora la scheda con i valori
+    // definitivi dello starter scelto, non al click del nodo successivo.
+    PokeMisteryRL.UI.refreshBottomPanel?.();
     msg(`${starter.nome} è il tuo starter.`);
     return true;
   };
@@ -2402,6 +2043,7 @@ PokeMisteryRL.Progress = (() => {
       const map = $("map");
       if(map){
         map.className = "test2-companion-choice-map";
+        map.removeAttribute("style");
         map.innerHTML = choiceMarkup;
         return;
       }
@@ -2456,12 +2098,14 @@ PokeMisteryRL.Progress = (() => {
         });
         PKM_RUN.shelterArrivalNodeId = nodeId;
       }
+      PKM_RUN.test2SceneBuildingHidden ||= {};
+      delete PKM_RUN.test2SceneBuildingHidden.campeggio;
       PKM_RUN.test2Scene = "campeggio";
       PokeMisteryRL.UI?.refreshBottomPanel?.();
       const bottom = $("bottomCampagna");
       bottom?.querySelectorAll(".test2-shelter-chansey").forEach(entry => entry.remove());
       if(bottom){
-        bottom.insertAdjacentHTML("beforeend", `<div class="test2-shelter-chansey"><img src="${sprite(chansey.immagine)}" alt="Chansey"><span>♥</span><em>LV ${level}</em></div>`);
+        bottom.insertAdjacentHTML("beforeend", `<div class="test2-shelter-chansey"><img src="${sprite(chansey.immagine)}" alt="Chansey"><em>LV ${level}</em></div>`);
       }
       const map = $("map");
       if(map){
@@ -2515,6 +2159,9 @@ PokeMisteryRL.Progress = (() => {
 
   const rejectShelterChallenge = () => {
     if(isTest2Mode()){
+      // Non c'è stata battaglia: annulla il ritorno automatico al Rifugio,
+      // altrimenti il primo "RIFIUTA" della schermata reroll la ricreava.
+      PKM_RUN.afterBattleNodeType = null;
       busy = 0;
       rifugio();
       return true;
@@ -2528,6 +2175,8 @@ PokeMisteryRL.Progress = (() => {
     // Test2: il dojo è una scena nello scenario superiore; la mappa in basso
     // diventa il pannello della sfida, come avviene già per il negozio.
     if(isTest2Mode()){
+      PKM_RUN.test2SceneBuildingHidden ||= {};
+      delete PKM_RUN.test2SceneBuildingHidden.dojo;
       PKM_RUN.test2Scene = "dojo";
       PokeMisteryRL.UI?.refreshBottomPanel?.();
       const bottom = $("bottomCampagna");
@@ -2570,19 +2219,10 @@ PokeMisteryRL.Progress = (() => {
     fight(false); return true;
   };
   const rejectSkillChallenge = () => { PokeMisteryRL.Effects?.skill?.(); return true; };
-  const chooseBossCompanion = (index) => {
-    const selected = PKM_RUN?.teamSlots?.[Number(index)];
-    if(!selected || Number(selected.hp) <= 0) return false;
-    const oldS2 = PKM_RUN.secondActive || null;
-    PKM_RUN.secondActive = selected;
-    PKM_RUN.teamSlots[Number(index)] = oldS2;
+  const openBossPreparation = () => {
+    // Il boss parte subito con la formazione già scelta nella scena.
     closeModal();
     fight(true);
-    return true;
-  };
-  const openBossPreparation = () => {
-    const reserves = (PKM_RUN?.teamSlots || []).map((pokemon, index) => ({pokemon,index})).filter(entry => entry.pokemon && Number(entry.pokemon.hp) > 0);
-    modal(`<div class="center boss-prep"><span>⚠️ BOSS IN ARRIVO</span><h2>Scegli il Partner</h2><p>Puoi cambiare il compagno prima dello scontro.</p><div class="boss-prep-grid">${reserves.map(({pokemon,index}) => `<button type="button" onclick="PokeMisteryRL.Progress.chooseBossCompanion(${index})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b><small>LV ${pokemon.level || 1}</small></button>`).join("") || `<small>Nessuna riserva disponibile.</small>`}</div><button type="button" onclick="closeModal();fight(true)">MANTIENI IL PARTNER ATTUALE</button></div>`);
   };
   const bossWaveContext = () => ({
     $,
@@ -2707,14 +2347,35 @@ PokeMisteryRL.Progress = (() => {
   };
 
   const pick = (node) => {
-    if(busy||!node?.ok||PKM_RUN?.dead) return; busy=1;
+    // Il renderer espone sia le uscite disponibili sia il nodo corrente.
+    // Il corrente è necessario all'avvio e dopo i ritorni evento: non
+    // deve venire scartato solo perché non porta più il flag `ok`.
+    const isCurrentNode = node?.row === PKM_RUN?.row && node?.col === PKM_RUN?.col && !node?.done;
+    if(busy || (!node?.ok && !isCurrentNode) || PKM_RUN?.dead) return;
+    busy=1;
     // Lo zaino è una fase tra due nodi: dal click in poi l'evento possiede
     // entrambi i box e non può essere sovrapposto da schermate inventario.
-    if(isTest2Mode()) PKM_RUN.test2BackpackAvailable = false;
-    const real=PKM_RUN.map[node.row]?.[node.col]; if(!real||!real.ok){busy=0;return;}
+    if(isTest2Mode()){
+      PKM_RUN.test2BackpackAvailable = false;
+      delete PKM_RUN.test2BackpackOpen;
+      delete PKM_RUN.test2FormationEditing;
+    }
+    const real=PKM_RUN.map[node.row]?.[node.col];
+    if(!real || (!real.ok && !isCurrentNode)){ busy=0; return; }
     if(PKM_RUN.lastDoneId && PKM_RUN.lastDoneId!==real.id){ real.parentId=PKM_RUN.lastDoneId; }
     PKM_RUN.lastDoneId=real.id;
     real.done=true; PKM_RUN.map.forEach(r=>r.forEach(n=>n.ok=false)); PKM_RUN.row=node.row; PKM_RUN.col=node.col;
+    // La struttura entra nella scena nello stesso istante in cui viene scelto
+    // il suo nodo. Non deve aspettare l'apertura del pannello in basso.
+    if(isTest2Mode()){
+      const sceneByNode = {skill:"dojo", shop:"bazar", rifugio:"campeggio"};
+      const scene = sceneByNode[real.type];
+      if(scene){
+        PKM_RUN.test2SceneBuildingHidden ||= {};
+        delete PKM_RUN.test2SceneBuildingHidden[scene];
+        PKM_RUN.test2Scene = scene;
+      }
+    }
     // Ogni evento riparte dalla scena standard: S1 e S2 vengono sempre
     // ricreati nella loro formazione prima di mostrare l'HUD del nodo.
     if(isTest2Mode()) PokeMisteryRL.UI.refreshBottomPanel?.();
@@ -2759,7 +2420,7 @@ PokeMisteryRL.Progress = (() => {
     // Il Negozio è visitabile subito; Kecleon combatte solo al quarto furto.
     if(real.type === "shop"){
       busy = 0;
-      shop();
+      window.shop?.();
       return;
     }
     // Ogni nodo non-boss prevede un combattimento. Al termine viene aperto
@@ -2797,13 +2458,14 @@ PokeMisteryRL.Progress = (() => {
       delete PKM_RUN.shopOffers;
       delete PKM_RUN.lastShopOffers;
     }
-    // Lo scenario mostrato dopo il nodo è quello della scelta appena fatta,
-    // non quello della prima scelta disponibile nella colonna successiva.
+    // Concluso il nodo, la scena torna neutra. Nessuna struttura può restare
+    // appesa nella scelta del nodo seguente.
     if(isTest2Mode()){
-      PKM_RUN.test2Scene = current.type === "skill" ? "dojo"
-        : current.type === "shop" ? "bazar"
-        : current.type === "rifugio" ? "campeggio"
-        : "tunnel";
+      PKM_RUN.test2SceneBuildingHidden ||= {};
+      const sceneByNode = {skill:"dojo", shop:"bazar", rifugio:"campeggio"};
+      const scene = sceneByNode[current.type];
+      if(scene) PKM_RUN.test2SceneBuildingHidden[scene] = true;
+      PKM_RUN.test2Scene = "tunnel";
     }
     // Dopo la prima tratta 1/2/3/3, Test2 mantiene visibile la colonna 4
     // e mostra le sue uscite verso 3/3/2/1.
@@ -2850,7 +2512,7 @@ PokeMisteryRL.Progress = (() => {
       closeModal();
       if(afterBattleNodeType === "rifugio"){ rifugio(); return; }
       if(afterBattleNodeType === "skill"){ skill(); return; }
-      if(afterBattleNodeType === "shop"){ shop(); return; }
+      if(afterBattleNodeType === "shop"){ window.shop?.(); return; }
     }
     // Il guardiano finale della feature usa la stessa transizione del boss
     // classico, così la run non resta bloccata sulla mappa.
@@ -2908,7 +2570,7 @@ PokeMisteryRL.Progress = (() => {
     PokeMisteryRL.UI.render();
     checkEvolve();
   };
-  return { pick, next, openStartingStarterChoice, openStartingPartnerChoice, chooseStartingStarter, chooseStartingPair, acceptShelterChallenge, rejectShelterChallenge, acceptSkillChallenge, rejectSkillChallenge, chooseBossCompanion, openWaveBossChallenge, startWaveBossChallenge, openHiddenPassage, enterHiddenPassage, declineHiddenPassage, payTollEvent, refuseTollEvent };
+  return { pick, next, openStartingStarterChoice, openStartingPartnerChoice, chooseStartingStarter, chooseStartingPair, acceptShelterChallenge, rejectShelterChallenge, acceptSkillChallenge, rejectSkillChallenge, openWaveBossChallenge, startWaveBossChallenge, openHiddenPassage, enterHiddenPassage, declineHiddenPassage, payTollEvent, refuseTollEvent };
 })();
 const { pick, next } = PokeMisteryRL.Progress;
 window.chooseStartingStarter = PokeMisteryRL.Progress.chooseStartingStarter;
@@ -3705,14 +3367,23 @@ const buildSkillCard = (
       const chansey = Object.values(PKM_DB).find(p => String(p.nome || "").toLowerCase() === "chansey");
       const bottom = $("bottomCampagna");
       bottom?.querySelectorAll(".test2-shelter-chansey").forEach(entry => entry.remove());
-      const members = [["S1", getActivePokemon(), "s1"], ["S2", PKM_RUN?.secondActive, "s2"], ["S3", PKM_RUN?.teamSlots?.[0], "0"]].filter(([,pokemon]) => pokemon);
+      const teamSlots = PKM_RUN?.teamSlots || [];
+      const starter = getActivePokemon() || PKM_RUN?.activePokemon || teamSlots.find(Boolean);
+      const partner = PKM_RUN?.secondActive || teamSlots.find(pokemon => pokemon && pokemon !== starter);
+      const thirdIndex = teamSlots.findIndex(pokemon => pokemon && pokemon !== starter && pokemon !== partner);
+      const members = [
+        ["S1", starter, "s1"],
+        ["S2", partner, "s2"],
+        ["S3", thirdIndex >= 0 ? teamSlots[thirdIndex] : null, String(thirdIndex)]
+      ].filter(([,pokemon]) => pokemon);
       const skillType = skill => String(Array.isArray(skill?.type) ? skill.type[0] : skill?.type || "normale").split(/[\s,\/]+/)[0].trim().toLowerCase() || "normale";
       const map = $("map");
       if(map){
         map.className = "test2-shelter-map";
         const shelterNodeId = `${Number(PKM_RUN?.floor) || 1}:${currentNode?.id || "rifugio"}`;
         const changeUsed = PKM_RUN?.shelterMoveTypeChangeNodeId === shelterNodeId;
-        map.innerHTML = `<section class="test2-shelter-panel test2-shelter-move-panel"><span>♥ RIFUGIO</span><p>La squadra è stata curata del <b>50%</b> all'arrivo.</p><div class="test2-shelter-reroll"><b>CAMBIA TIPO MOSSA</b><small>Seleziona un Pokémon a cui cambiare il typing della mossa.</small><div class="test2-shelter-members">${members.map(([,pokemon,key]) => { const move = PokeMisteryRL_SkillSystem?.getActiveSkill?.(pokemon) || pokemon.skills?.[0]; const reroll = pokemon.__lastMoveTypeReroll?.nodeId === shelterNodeId ? pokemon.__lastMoveTypeReroll : null; const currentType = reroll?.from || skillType(move); const receivedType = reroll?.to || null; return `<button type="button" class="test2-shelter-move-card ${reroll ? "changed" : ""}" ${changeUsed ? "disabled" : ""} onclick="shelterRerollSkillType('${key}')"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b><span><small>TIPO ATTUALE</small><em>${getTypingBadge(currentType)}</em></span><span><small>TIPO RICEVUTO</small><em>${receivedType ? getTypingBadge(receivedType) : "—"}</em></span></button>`; }).join("")}</div><i>${changeUsed ? "Cambio usato in questo nodo" : "1 cambio gratuito per nodo"}</i></div><button type="button" onclick="next('Hai lasciato il Rifugio.')">CONTINUA</button></section>`;
+        const rerollCards = members.length ? members.map(([,pokemon,key]) => { const move = PokeMisteryRL_SkillSystem?.getActiveSkill?.(pokemon) || pokemon.skills?.[0]; const reroll = pokemon.__lastMoveTypeReroll?.nodeId === shelterNodeId ? pokemon.__lastMoveTypeReroll : null; const currentType = reroll?.from || skillType(move); const receivedType = reroll?.to || null; return `<button type="button" class="test2-shelter-move-card ${reroll ? "changed" : ""}" ${changeUsed ? "disabled" : ""} onclick="shelterRerollSkillType('${key}')"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b><span><small>TIPO ATTUALE</small><em>${getTypingBadge(currentType)}</em></span><span><small>TIPO RICEVUTO</small><em>${receivedType ? getTypingBadge(receivedType) : "—"}</em></span></button>`; }).join("") : `<span class="test2-shelter-empty">Nessun membro disponibile.</span>`;
+        map.innerHTML = `<section class="test2-shelter-panel test2-shelter-move-panel"><span>♥ RIFUGIO</span><p>La squadra è stata curata del <b>50%</b> all'arrivo.</p><div class="test2-shelter-reroll"><b>CAMBIA TIPO MOSSA</b><small>Seleziona un Pokémon a cui cambiare il typing della mossa.</small><i>${changeUsed ? "Cambio usato in questo nodo" : "1 cambio gratuito per nodo"}</i></div><div class="test2-shelter-members">${rerollCards}</div><button type="button" class="test2-shelter-skip-reroll" onclick="next('Hai lasciato il Rifugio senza cambiare mossa.')">CONTINUA</button></section>`;
       }
       return;
     }
@@ -4052,7 +3723,7 @@ PokeMisteryRL.Battle = (() => {
           isBoss ? `⚠️ ${enemies.map(p => p.nome).join(" + ")} BOSS!` : `⚔️ ${enemy.nome} selvatico!`,
           isBoss ? "boss" : ""
         );
-        setTimeout(autoTurn, isTestCampaign() ? 1547 : 700);
+        setTimeout(autoTurn, isTestCampaign() ? 420 : 700);
       };
 
       startBattle();
@@ -4488,7 +4159,7 @@ PokeMisteryRL.Battle = (() => {
         log(`ONDATA ${wave}/3: ${enemies.map(enemy => enemy.nome).join(" + ")}!`);
         showBattleSurface(PokeMisteryRL.UI.buildBattleTemplate(true, PKM_RUN.floor));
         PokeMisteryRL.UI.updateBattleHP();
-        setTimeout(autoTurn, isTestCampaign() ? 1250 : 650);
+        setTimeout(autoTurn, isTestCampaign() ? 420 : 650);
         return;
       }
     }
@@ -4603,7 +4274,7 @@ PokeMisteryRL.Battle = (() => {
 
       setTimeout(
         autoTurn,
-        isTestCampaign() ? 1989 : 900
+        isTestCampaign() ? 420 : 900
       );
 
       return;
@@ -4638,7 +4309,7 @@ PokeMisteryRL.Battle = (() => {
         log(`⚡ ${attacker.nome} è stordito e perde il turno.`);
         battle.phase++;
         PokeMisteryRL.UI.updateBattleHP();
-        setTimeout(autoTurn, isTestCampaign() ? 995 : 450);
+        setTimeout(autoTurn, isTestCampaign() ? 280 : 450);
         return;
       }
 
@@ -4646,7 +4317,7 @@ PokeMisteryRL.Battle = (() => {
         attacker.__campaignFrozenTurns--;
         log(`❄ ${attacker.nome} è congelato e salta il turno.`);
         battle.phase++;
-        setTimeout(autoTurn, isTestCampaign() ? 995 : 450);
+        setTimeout(autoTurn, isTestCampaign() ? 280 : 450);
         return;
       }
 
@@ -4882,7 +4553,7 @@ PokeMisteryRL.Battle = (() => {
 
         setTimeout(
           gameover,
-          isTestCampaign() ? 1105 : 500
+          isTestCampaign() ? 400 : 500
         );
 
         return;
@@ -4931,7 +4602,7 @@ PokeMisteryRL.Battle = (() => {
 
         setTimeout(
           handleDefeatedEnemies,
-          isTestCampaign() ? 1105 : 500
+          isTestCampaign() ? 400 : 500
         );
 
         return;
@@ -4946,7 +4617,7 @@ PokeMisteryRL.Battle = (() => {
 
     setTimeout(
       autoTurn,
-      isTestCampaign() ? 1437 : 650
+      isTestCampaign() ? 400 : 650
     );
   };
 
@@ -5491,8 +5162,9 @@ PokeMisteryRL.UI = (() => {
   const toggleInventory = () => {
     if(isTest2Mode()){
       if($("map")?.classList.contains("test2-backpack-map")) closeTest2Backpack();
-      else openTestBackpack();
-      return;
+      else if(canOpenTest2Backpack()) openTestBackpack();
+      else msg("Lo zaino è disponibile solo dopo la conclusione del nodo.");
+      return false;
     }
     const inv = $("centerInventoryPanel");
     if(inv && inv.style.display !== "none" && inv.style.display !== "") hideInventory();
@@ -5522,12 +5194,18 @@ PokeMisteryRL.UI = (() => {
 
   // Zaino Test: oggetti e formazione convivono nella stessa HUD e supportano il drag & drop.
   const testBackpackRoster = () => [PKM_RUN?.activePokemon, PKM_RUN?.secondActive, ...(PKM_RUN?.teamSlots || [])].filter(Boolean).slice(0,4);
+  const isTest2SafeIntermission = () => {
+    if(!isTest2Mode() || PKM_RUN?.battle || busy || PKM_RUN?.test2BackpackAvailable !== true) return false;
+    // Protegge anche i frame di transizione in cui il fight è già presente
+    // nel DOM ma PKM_RUN.battle è appena stato resettato.
+    return !document.querySelector("#bottomContainer .test2-fight-bottom, #bottomContainer #battleFinal, #bottomContainer .bf-field");
+  };
   const canOpenTest2Backpack = () => {
     const map = $("map");
     const policy = window.PokeMisteryRL?.BackpackPolicy;
+    if(!isTest2SafeIntermission()) return false;
     if(policy?.canOpen) return policy.canOpen(PKM_RUN, map);
-    if(!isTest2Mode() || PKM_RUN?.battle) return false;
-    return !!map;
+    return !!map?.classList.contains("test2-horizontal-map");
   };
   const isUsableItem = item => ["cura","crescita","bonus","uovo"].includes(String(item?.tipo || "").toLowerCase()) && !["avanzi","amuleto"].includes(String(item?.id || ""));
   const isEquipableItem = item => !!item && !isUsableItem(item);
@@ -5564,6 +5242,7 @@ PokeMisteryRL.UI = (() => {
     backpackItemHoldTimer = setTimeout(() => { backpackItemHoldTimer = null; showBackpackItemInfo(itemId); }, 520);
   };
   const equipItemToTestPokemon = (itemId, rosterIndex) => {
+    if(isTest2Mode() && !isTest2BackpackSession()) return false;
     const holder = testBackpackRoster()[Number(rosterIndex)];
     const db = window.PokeMisteryRL_Items?.DB_ITEMS || window.DB_ITEMS || {};
     const item = db[itemId] || Object.values(db).find(entry => String(entry?.id) === String(itemId));
@@ -5578,16 +5257,21 @@ PokeMisteryRL.UI = (() => {
     openTestBackpack();
     return true;
   };
+  const isTest2BackpackSession = () => {
+    const map = $("map");
+    return !!(isTest2SafeIntermission() && PKM_RUN?.test2BackpackOpen && map?.classList.contains("test2-backpack-map"));
+  };
   const renderTest2BackpackMap = () => {
     const map = $("map");
     if(!map || !isTest2Mode()) return false;
-    if(!canOpenTest2Backpack()){ msg("Lo zaino è disponibile tra un nodo e il successivo."); return false; }
+    if(!isTest2BackpackSession() && !canOpenTest2Backpack()){ msg("Lo zaino è disponibile tra un nodo e il successivo."); return false; }
     const items = getRunInventory().map(formatInventoryEntry).filter(item => item && Number(item.qty) > 0);
     const tab = PKM_RUN.test2BackpackTab === "usable" ? "usable" : "equipment";
     const pocket = tab === "equipment" ? items.filter(isEquipableItem) : items.filter(item => isUsableItem(item) && !isEquipableItem(item));
     map.className = "test2-backpack-map";
     map.dataset.test2BackpackOpen = "1";
-    map.innerHTML = `<section class="test2-backpack-panel"><header><div><span>🎒 ZAINO</span><small>${tab === "equipment" ? "EQUIPAGGIAMENTI · TRASCINA O TOCCA" : "USABILI · TOCCA E SCEGLI IL MEMBRO"}</small></div><button type="button" class="test2-backpack-close" onclick="PokeMisteryRL.UI.closeTest2Backpack()" aria-label="Chiudi zaino">✕</button></header><nav class="test2-backpack-tabs"><button type="button" class="${tab === "equipment" ? "active" : ""}" onclick="PokeMisteryRL.UI.setTest2BackpackTab('equipment')">EQUIP</button><button type="button" class="${tab === "usable" ? "active" : ""}" onclick="PokeMisteryRL.UI.setTest2BackpackTab('usable')">USABILI</button></nav><div class="test2-backpack-grid">${pocket.length ? pocket.map(item => { const key = String(item.id).replace(/'/g,"\\'"); return `<button type="button" class="test2-backpack-tile ${tab}" draggable="true" ondragstart="PokeMisteryRL.UI.dragBackpackItem(event,'${key}')" onclick="PokeMisteryRL.UI.openTest2BackpackItemInfo('${key}')">${item.image ? `<img src="${item.image}" alt="">` : `<i>${item.icon}</i>`}<b>${item.name}</b><small>${itemEffectLabel(item)}</small><em>×${item.qty}</em></button>`; }).join("") : `<p class="test2-backpack-empty">Nessun oggetto in questa tasca.</p>`}</div></section>`;
+    PKM_RUN.test2BackpackOpen = true;
+    map.innerHTML = `<section class="test2-backpack-panel" aria-label="Zaino"><header class="test2-bag-header"><div class="test2-bag-title"><span>🎒 ZAINO</span><small>${tab === "equipment" ? "EQUIPAGGIAMENTI" : "OGGETTI USABILI"}</small></div><button type="button" class="test2-backpack-close" onclick="PokeMisteryRL.UI.closeTest2Backpack()" aria-label="Chiudi zaino">✕</button></header><nav class="test2-backpack-tabs" aria-label="Tasche"><button type="button" class="${tab === "equipment" ? "active" : ""}" onclick="PokeMisteryRL.UI.setTest2BackpackTab('equipment')">EQUIP</button><button type="button" class="${tab === "usable" ? "active" : ""}" onclick="PokeMisteryRL.UI.setTest2BackpackTab('usable')">USABILI</button></nav><div class="test2-backpack-grid">${pocket.length ? pocket.map(item => { const key = String(item.id).replace(/'/g,"\\'"); return `<button type="button" class="test2-backpack-tile ${tab}" draggable="true" ondragstart="PokeMisteryRL.UI.dragBackpackItem(event,'${key}')" onpointerdown="PokeMisteryRL.UI.startSceneBackpackTouch(event,'${key}')" onpointermove="PokeMisteryRL.UI.moveSceneBackpackTouch(event)" onpointerup="PokeMisteryRL.UI.endSceneBackpackTouch(event)" onpointercancel="PokeMisteryRL.UI.endSceneBackpackTouch(event)" onclick="PokeMisteryRL.UI.openTest2BackpackItemInfo('${key}')"><span class="test2-backpack-item-icon">${item.image ? `<img src="${item.image}" alt="">` : `<i>${item.icon}</i>`}</span><span class="test2-backpack-item-copy"><b>${item.name}</b><small>${itemEffectLabel(item)}</small></span><em>×${item.qty}</em></button>`; }).join("") : `<p class="test2-backpack-empty">Nessun oggetto in questa tasca.</p>`}</div></section>`;
     return true;
   };
   const setTest2BackpackTab = tab => {
@@ -5598,9 +5282,11 @@ PokeMisteryRL.UI = (() => {
   const closeTest2Backpack = () => {
     if(!isTest2Mode()) return;
     delete PKM_RUN.test2BackpackTab;
+    delete PKM_RUN.test2BackpackOpen;
     render();
   };
   const applyTest2BackpackItem = (itemId, index) => {
+    if(isTest2Mode() && !isTest2BackpackSession()) return false;
     const item = getRunInventory().map(formatInventoryEntry).find(entry => String(entry?.id) === String(itemId));
     if(!item) return false;
     const success = isUsableItem(item)
@@ -5615,7 +5301,7 @@ PokeMisteryRL.UI = (() => {
   };
   const openTest2BackpackItemInfo = itemId => {
     if(!isTest2Mode()) return showBackpackItemInfo(itemId);
-    if(!canOpenTest2Backpack()) return false;
+    if(!isTest2BackpackSession() && !canOpenTest2Backpack()) return false;
     const item = getRunInventory().map(formatInventoryEntry).find(entry => String(entry?.id) === String(itemId));
     const team = testBackpackRoster().slice(0,3);
     if(!item || !team.length) return false;
@@ -5624,7 +5310,7 @@ PokeMisteryRL.UI = (() => {
     const action = isUsableItem(item) ? "USA SU" : "EQUIPAGGIA A";
     const key = String(item.id).replace(/'/g,"\\'");
     map.className = "test2-backpack-map test2-backpack-info-map";
-    map.innerHTML = `<section class="test2-item-info-panel"><header><button type="button" class="test2-backpack-back" onclick="PokeMisteryRL.UI.openTestBackpack()">← ZAINO</button><span>${isUsableItem(item) ? "USABILE" : "EQUIPAGGIABILE"}</span></header><div class="test2-item-info-main"><div class="test2-item-info-icon">${item.image ? `<img src="${item.image}" alt="${item.name}">` : `<i>${item.icon}</i>`}</div><div><h2>${item.name}</h2><small>Disponibili · ×${item.qty}</small><p>${itemUsageHint(item)}</p></div></div><section class="test2-item-effect-card"><small>EFFETTO ATTIVO</small><b>${itemEffectLabel(item)}</b></section><section class="test2-item-targets">${team.map((pokemon,index) => `<button type="button" draggable="true" ondragover="PokeMisteryRL.UI.allowTestBottomDrop(event)" ondrop="PokeMisteryRL.UI.dropBackpackItemToScene(event,${index})" onclick="PokeMisteryRL.UI.applyTest2BackpackItem('${key}',${index})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>S${index + 1}</span><b>${pokemon.nome}</b><small>${isUsableItem(item) ? "USA" : "EQUIPAGGIA"}</small></button>`).join("")}</section></section>`;
+    map.innerHTML = `<section class="test2-item-info-panel"><header><button type="button" class="test2-backpack-back" onclick="PokeMisteryRL.UI.openTestBackpack()">← ZAINO</button><span>${isUsableItem(item) ? "USABILE" : "EQUIPAGGIABILE"}</span></header><div class="test2-item-info-main"><div class="test2-item-info-icon" draggable="true" ondragstart="PokeMisteryRL.UI.dragBackpackItem(event,'${key}')" onpointerdown="PokeMisteryRL.UI.startTest2BackpackTouch(event,'${key}')" onpointermove="PokeMisteryRL.UI.moveTest2BackpackTouch(event)" onpointerup="PokeMisteryRL.UI.endTest2BackpackTouch(event)" onpointercancel="PokeMisteryRL.UI.endTest2BackpackTouch(event)">${item.image ? `<img src="${item.image}" alt="${item.name}">` : `<i>${item.icon}</i>`}</div><div><h2>${item.name}</h2><small>Disponibili · ×${item.qty}</small><p>${itemUsageHint(item)}</p></div></div><section class="test2-item-effect-card"><small>EFFETTO ATTIVO</small><b>${itemEffectLabel(item)}</b></section><section class="test2-item-targets">${team.map((pokemon,index) => `<button type="button" data-backpack-target="${index}" ondragover="PokeMisteryRL.UI.highlightTest2BackpackTarget(event)" ondragenter="PokeMisteryRL.UI.highlightTest2BackpackTarget(event)" ondragleave="PokeMisteryRL.UI.clearTest2BackpackTarget(event)" ondrop="PokeMisteryRL.UI.dropBackpackItemToScene(event,${index})" onclick="PokeMisteryRL.UI.applyTest2BackpackItem('${key}',${index})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>S${index + 1}</span><b>${pokemon.nome}</b><small>${isUsableItem(item) ? "USA" : "EQUIPAGGIA"}</small></button>`).join("")}</section></section>`;
     return true;
   };
   const openTestBackpack = () => {
@@ -5645,12 +5331,102 @@ PokeMisteryRL.UI = (() => {
   const dropBackpackItem = (event, index) => { event.preventDefault(); return equipItemToTestPokemon(event.dataTransfer.getData("text/plain"), index); };
   const dropBackpackItemToScene = (event, index) => {
     event.preventDefault();
+    clearSceneBackpackTargets?.();
     const itemId = event.dataTransfer?.getData("application/x-pokemistery-item");
     if(!itemId) return dropTestBottomPokemon(event, index);
     const item = getRunInventory().map(formatInventoryEntry).find(entry => String(entry?.id) === String(itemId));
     if(!item) return false;
     return applyTest2BackpackItem(itemId, index);
   };
+  let test2BackpackTouchItem = null;
+  let test2BackpackTouchMoved = false;
+  let test2BackpackTouchPointerId = null;
+  const targetAtTest2BackpackPoint = (x, y) => document.elementFromPoint(x, y)?.closest?.("[data-backpack-target]") || null;
+  const clearTest2BackpackTargets = () => document.querySelectorAll("[data-backpack-target].test2-backpack-drop-target").forEach(target => target.classList.remove("test2-backpack-drop-target"));
+  const updateTest2BackpackTarget = (x, y) => {
+    const target = targetAtTest2BackpackPoint(x, y);
+    clearTest2BackpackTargets();
+    target?.classList.add("test2-backpack-drop-target");
+    return target;
+  };
+  const highlightTest2BackpackTarget = event => {
+    event.preventDefault();
+    clearTest2BackpackTargets();
+    event.currentTarget?.classList.add("test2-backpack-drop-target");
+  };
+  const clearTest2BackpackTarget = event => event.currentTarget?.classList.remove("test2-backpack-drop-target");
+  const startTest2BackpackTouch = (event, itemId) => {
+    if(event.pointerType === "mouse") return;
+    test2BackpackTouchItem = itemId;
+    test2BackpackTouchMoved = false;
+    test2BackpackTouchPointerId = event.pointerId;
+    event.currentTarget?.setPointerCapture?.(event.pointerId);
+  };
+  const moveTest2BackpackTouch = event => {
+    if(!test2BackpackTouchItem) return;
+    test2BackpackTouchMoved = true;
+    event.preventDefault();
+    updateTest2BackpackTarget(event.clientX, event.clientY);
+  };
+  const endTest2BackpackTouch = event => {
+    if(!test2BackpackTouchItem) return false;
+    const itemId = test2BackpackTouchItem;
+    const target = updateTest2BackpackTarget(event.clientX, event.clientY);
+    test2BackpackTouchItem = null;
+    test2BackpackTouchPointerId = null;
+    clearTest2BackpackTargets();
+    if(test2BackpackTouchMoved && target){
+      event.preventDefault();
+      return applyTest2BackpackItem(itemId, Number(target.dataset.backpackTarget));
+    }
+    return false;
+  };
+  let sceneBackpackTouchItem = null;
+  let sceneBackpackTouchPointerId = null;
+  let sceneBackpackTouchMoved = false;
+  const clearSceneBackpackTargets = () => document.querySelectorAll("[data-scene-item-target].scene-item-drop-target").forEach(target => target.classList.remove("scene-item-drop-target"));
+  const updateSceneBackpackTarget = (x, y) => {
+    const target = document.elementFromPoint(x, y)?.closest?.("[data-scene-item-target]") || null;
+    clearSceneBackpackTargets();
+    target?.classList.add("scene-item-drop-target");
+    return target;
+  };
+  const highlightSceneBackpackTarget = event => {
+    event.preventDefault();
+    clearSceneBackpackTargets();
+    event.currentTarget?.classList.add("scene-item-drop-target");
+  };
+  const clearSceneBackpackTarget = event => event.currentTarget?.classList.remove("scene-item-drop-target");
+  const startSceneBackpackTouch = (event, itemId) => {
+    if(event.pointerType === "mouse") return;
+    sceneBackpackTouchItem = itemId;
+    sceneBackpackTouchPointerId = event.pointerId;
+    sceneBackpackTouchMoved = false;
+    event.currentTarget?.setPointerCapture?.(event.pointerId);
+  };
+  const moveSceneBackpackTouch = event => {
+    if(!sceneBackpackTouchItem) return;
+    sceneBackpackTouchMoved = true;
+    event.preventDefault();
+    updateSceneBackpackTarget(event.clientX, event.clientY);
+  };
+  const endSceneBackpackTouch = event => {
+    if(!sceneBackpackTouchItem) return false;
+    const itemId = sceneBackpackTouchItem;
+    const target = updateSceneBackpackTarget(event.clientX, event.clientY);
+    sceneBackpackTouchItem = null;
+    sceneBackpackTouchPointerId = null;
+    clearSceneBackpackTargets();
+    if(sceneBackpackTouchMoved && target){
+      event.preventDefault();
+      return applyTest2BackpackItem(itemId, Number(target.dataset.sceneItemTarget));
+    }
+    return false;
+  };
+  document.addEventListener("pointermove", event => {
+    if(test2BackpackTouchItem && event.pointerId === test2BackpackTouchPointerId) updateTest2BackpackTarget(event.clientX, event.clientY);
+    if(sceneBackpackTouchItem && event.pointerId === sceneBackpackTouchPointerId) updateSceneBackpackTarget(event.clientX, event.clientY);
+  }, { passive:true });
 
   const buildTestBottomTemplate = () => `
     <div id="campaignTestBottom" class="campaign-test-bottom">
@@ -5667,6 +5443,51 @@ PokeMisteryRL.UI = (() => {
     return "tunnel";
   };
   const getTest2BottomScene = () => PKM_RUN?.test2Scene || getTest2SceneForNode(PKM_RUN?.map?.[PKM_RUN?.row]?.[PKM_RUN?.col]);
+  const fallbackTest2SceneBuildings = {
+    dojo: { asset:"./img/scenes/forest-dojo.png", label:"Dojo", x:92, y:43, size:70, flip:false },
+    bazar: { asset:"./img/scenes/forest-stall.png", label:"Bancarella", x:84, y:48, size:40, flip:false },
+    campeggio: { asset:"./img/scenes/forest-refuge.png", label:"Rifugio", x:86, y:42, size:52, flip:false }
+  };
+  const test2SceneBuildings = PokeMisteryRL.SceneLayout?.buildings || fallbackTest2SceneBuildings;
+  const getTest2SceneBuilding = scene => {
+    const base = test2SceneBuildings[scene];
+    if(!base) return null;
+    if(PKM_RUN?.test2SceneBuildingHidden?.[scene]) return null;
+    PKM_RUN.test2SceneBuildingLayout ||= {};
+    const saved = PKM_RUN.test2SceneBuildingLayout[scene] || {};
+    // Migrazione della prima prova: 101% nascondeva quasi tutto il PNG
+    // trasparente. Questa è la posizione approvata, ampia ma leggibile.
+    if(scene === "dojo" && saved.version !== 2){
+      PKM_RUN.test2SceneBuildingLayout[scene] = {x:92, y:43, size:70, flip:false, version:2};
+    }
+    if(scene === "bazar" && saved.version !== 2){
+      PKM_RUN.test2SceneBuildingLayout[scene] = {x:84, y:48, size:40, flip:true, version:2};
+    }
+    if(scene === "campeggio" && saved.version !== 2){
+      PKM_RUN.test2SceneBuildingLayout[scene] = {x:86, y:42, size:52, flip:true, version:2};
+    }
+    return {...base, ...(PKM_RUN.test2SceneBuildingLayout[scene] || {})};
+  };
+  const renderTest2SceneBuilding = () => {
+    const bottom = $("bottomCampagna");
+    if(!bottom || bottom.classList.contains("test2-fight-bottom")) return false;
+    const scene = getTest2BottomScene();
+    const building = getTest2SceneBuilding(scene);
+    bottom.querySelector(".test2-scene-building")?.remove();
+    if(!building) return false;
+    const editing = !!PKM_RUN?.test2SceneBuildingEditing;
+    const element = document.createElement("div");
+    element.className = `test2-scene-building ${editing ? "is-editing" : ""}`;
+    element.dataset.sceneBuilding = scene;
+    element.style.setProperty("--building-x", `${Number(building.x)}%`);
+    element.style.setProperty("--building-y", `${Number(building.y)}%`);
+    element.style.setProperty("--building-size", `${Number(building.size)}%`);
+    element.innerHTML = `<img src="${building.asset}" alt="${building.label}">${editing ? `<span class="test2-building-label">${building.label}</span><button type="button" class="test2-building-drag" onpointerdown="PokeMisteryRL.UI.startTest2SceneBuildingEdit(event,'move')" aria-label="Sposta ${building.label}">✥</button><button type="button" class="test2-building-resize" onpointerdown="PokeMisteryRL.UI.startTest2SceneBuildingEdit(event,'resize')" aria-label="Ridimensiona ${building.label}">↘</button><button type="button" class="test2-building-flip" onclick="PokeMisteryRL.UI.flipTest2SceneBuilding()" aria-label="Specchia ${building.label}">⇄</button>` : ""}`;
+    element.querySelector("img").style.transform = building.flip ? "scaleX(-1)" : "none";
+    bottom.insertBefore(element, bottom.querySelector(".bottom-campagna-formation") || bottom.firstChild);
+    if(PKM_RUN?.test2SceneBuildingEditing) decorateTest2ScenePngs();
+    return true;
+  };
 
   const bottomTypeBadges = (pokemon) => {
     const types = getPokemonTypes(pokemon).length
@@ -5676,12 +5497,20 @@ PokeMisteryRL.UI = (() => {
     .join("");
   };
 
+  const canEditTest2Formation = () => {
+    return isTest2SafeIntermission();
+  };
   const buildTest2UtilityBar = () => `
-    <nav class="test2-utility-bar" aria-label="Comandi run">
+    <nav class="test2-utility-bar ${PKM_RUN?.test2UtilityExpanded ? "expanded" : ""}" aria-label="Comandi run">
       <span class="test2-utility-money" title="Soldi">💰 <b id="test2BitsReadout">${Number(PKM_RUN?.bits) || 0}</b></span>
-      <button type="button" onclick="openHomeMenu()" aria-label="Menu" title="Menu">☰</button>
-      <button type="button" class="test2-reset" onclick="quickReset()" aria-label="Ricomincia" title="Ricomincia">↻</button>
-      <button type="button" onclick="toggleInventory()" aria-label="Zaino" title="Zaino">🎒</button>
+      <button type="button" class="test2-utility-toggle" onclick="PokeMisteryRL.UI.toggleTest2UtilityBar()" aria-label="${PKM_RUN?.test2UtilityExpanded ? "Richiudi comandi" : "Apri comandi"}" aria-expanded="${PKM_RUN?.test2UtilityExpanded ? "true" : "false"}" title="${PKM_RUN?.test2UtilityExpanded ? "Richiudi" : "Altri comandi"}">${PKM_RUN?.test2UtilityExpanded ? "×" : "+"}</button>
+      <div class="test2-utility-actions">
+        <button type="button" onclick="openHomeMenu()" aria-label="Menu" title="Menu">☰</button>
+        <button type="button" class="test2-reset" onclick="quickReset()" aria-label="Ricomincia" title="Ricomincia">↻</button>
+        <button type="button" onclick="PokeMisteryRL.UI.toggleTest2SceneBuildingEditor()" aria-label="Modifica PNG scena" title="Sposta PNG nella scena">🏗</button>
+        <button type="button" onclick="PokeMisteryRL.UI.toggleTest2FormationEditor()" aria-label="Formazione" title="${canEditTest2Formation() ? "Modifica formazione" : "La formazione si modifica tra due nodi"}" ${canEditTest2Formation() ? "" : "disabled"}>◎</button>
+        <button type="button" onclick="toggleInventory()" aria-label="Zaino" title="${canOpenTest2Backpack() ? "Apri zaino" : "Lo zaino è disponibile tra due nodi"}" ${canOpenTest2Backpack() ? "" : "disabled"}>🎒</button>
+      </div>
     </nav>
   `;
 
@@ -5868,11 +5697,26 @@ PokeMisteryRL.UI = (() => {
         // Kecleon compare soltanto durante l'evento negozio, mai come
         // mini-sprite permanente nello scenario.
         test2Bottom.querySelector('.test2-kecleon')?.remove();
+        renderTest2SceneBuilding();
       }
       const test2FloorReadout = $('test2FloorReadout');
       const test2BitsReadout = $('test2BitsReadout');
       if(test2FloorReadout) test2FloorReadout.textContent = PKM_RUN.extraPassage ? 'PASSAGGIO' : `PIANO ${PKM_RUN.floor || 1}`;
       if(test2BitsReadout) test2BitsReadout.textContent = Number(PKM_RUN.bits) || 0;
+      // I pulsanti possono essere già nel DOM dopo la chiusura di un pannello:
+      // sincronizzali a ogni refresh, senza aspettare di ricreare il bottom.
+      const formationAvailable = canEditTest2Formation();
+      const backpackAvailable = canOpenTest2Backpack();
+      const formationButton = test2Bottom?.querySelector('[aria-label="Formazione"]');
+      const backpackButton = test2Bottom?.querySelector('[aria-label="Zaino"]');
+      if(formationButton){
+        formationButton.disabled = !formationAvailable;
+        formationButton.title = formationAvailable ? "Modifica formazione" : "La formazione si modifica tra due nodi";
+      }
+      if(backpackButton){
+        backpackButton.disabled = !backpackAvailable;
+        backpackButton.title = backpackAvailable ? "Apri zaino" : "Lo zaino è disponibile tra due nodi";
+      }
       // I box superiori sono la fonte visiva dell'ordine: dopo ogni scambio
       // ricostruiscili con gli sprite effettivamente assegnati a S1/S2/S3.
       const formationOrder = test2Bottom?.querySelector('.test2-formation-order');
@@ -5902,22 +5746,27 @@ PokeMisteryRL.UI = (() => {
         { pokemon:slots[0], slotIndex:2, label:'COMP. 1' },
         { pokemon:slots[1], slotIndex:3, label:'COMP. 2' },
         { pokemon:PKM_RUN.activePokemon, slotIndex:0, label:'STARTER 1' },
-        { pokemon:PKM_RUN.secondActive, slotIndex:1, label:'STARTER 2' }
+        { pokemon:PKM_RUN.secondActive, slotIndex:1, label:'STARTER 2' },
+        ...slots.slice(2, 7).map((pokemon, index) => ({ pokemon, slotIndex:index + 4, label:`TEST ${index + 5}` }))
       ];
       if(formation){
+        const defaultPositions = {0:3, 1:4, 2:5};
+        PKM_RUN.test2ScenePositions ||= {...defaultPositions};
+        const positionFor = slotIndex => clamp(Number(PKM_RUN.test2ScenePositions?.[slotIndex] ?? defaultPositions[slotIndex] ?? 4), 0, 8);
         formation.innerHTML = roster.map(({pokemon, slotIndex, label}, index) => {
           if(!pokemon) return '';
           const maxHp = Math.max(1, Number(pokemon.maxHp) || 1);
           const hp = clamp(Number(pokemon.hp) || 0, 0, maxHp);
           const hpPercent = Math.round(hp / maxHp * 100);
           const isSceneMember = index === 0 || index >= 2;
-          return `<button type="button" class="bottom-campagna-member member-${index} ${isSceneMember ? 'starter' : 'ally'} ${index === 1 ? 'test2-reserve' : ''} ${hp <= 0 ? 'dead' : ''}" draggable="true" onclick="PokeMisteryRL.UI.openTestBottomPokemon(${slotIndex})" ondragstart="PokeMisteryRL.UI.dragTestBottomPokemon(event,${slotIndex})" ondragover="PokeMisteryRL.UI.allowTestBottomDrop(event)" ondrop="PokeMisteryRL.UI.${isSceneMember ? 'dropBackpackItemToScene' : 'dropTestBottomPokemon'}(event,${slotIndex})" title="${pokemon.nome}">
-            <span class="bottom-campagna-types" aria-label="Tipi di ${pokemon.nome}">${bottomTypeBadges(pokemon)}</span>
+          return `<button type="button" class="bottom-campagna-member member-${index} test2-position-${positionFor(slotIndex)} ${isSceneMember ? 'starter' : 'ally'} ${hp <= 0 ? 'dead' : ''}" ${isSceneMember ? `data-scene-item-target="${slotIndex}" ondragenter="PokeMisteryRL.UI.highlightSceneBackpackTarget(event)" ondragleave="PokeMisteryRL.UI.clearSceneBackpackTarget(event)"` : ""} onclick="PokeMisteryRL.UI.openTestBottomPokemon(${slotIndex})" title="${pokemon.nome}">
             <img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">
-            <span class="sr-only">${label} · ${pokemon.nome} · ${hpPercent}% vita</span>${isSceneMember ? `<i class="bottom-campagna-hp"><b style="width:${hpPercent}%"></b></i>` : ""}
+            <span class="test2-scene-info"><b class="test2-scene-name">${pokemon.nome}</b><em class="test2-scene-level">LV ${pokemon.level || 1}</em><small class="test2-scene-move-level">MOSSA LV ${pokemon.sk || pokemon.skills?.[0]?.skillLevel || 1}</small><span class="bottom-campagna-types test2-scene-types" aria-label="Tipi di ${pokemon.nome}">${bottomTypeBadges(pokemon)}</span><i class="bottom-campagna-hp test2-scene-hp"><b style="width:${hpPercent}%"></b></i></span>
+            <span class="sr-only">${label} · ${pokemon.nome} · ${hpPercent}% vita</span>
           </button>`;
         }).join('');
       }
+      decorateTest2ScenePngs();
       return;
     }
 
@@ -6533,15 +6382,23 @@ PokeMisteryRL.UI = (() => {
       return;
     }
 
+    // Le scelte iniziali costruiscono già la loro scena e il loro box mappa.
+    // Un render globale (per esempio al termine del caricamento dati) non deve
+    // sostituirli per un frame con la mappa normale: era il flash visibile.
+    const initialChoiceOpen = isTest2Mode() && ["starter", "companions"].includes(PKM_RUN.startSelection?.phase) && !PKM_RUN.startSelection?.locked;
+    if(initialChoiceOpen) return;
+
+    // Se la mappa sta mostrando nuove uscite, la scena precedente è ormai
+    // chiusa: nessun lock residuo può rendere i nodi apparentemente attivi
+    // ma non cliccabili.
+    if(isTest2Mode() && !PKM_RUN.battle && PKM_RUN.map?.some(row => row?.some(node => node?.ok))){
+      busy = 0;
+    }
+
     const floorButton = $("mapFloorButton");
     if(floorButton) floorButton.textContent = PKM_RUN.extraPassage ? "PASSAGGIO" : `PIANO: ${PKM_RUN.floor || 1}`;
-
-    refreshBottomPanel();
-
-
     const map =
       $("map");
-
 
     if (!map) {
       return;
@@ -6556,6 +6413,10 @@ PokeMisteryRL.UI = (() => {
       delete map.dataset.test2Phase;
     }
 
+    // Aggiorna i comandi soltanto dopo avere ristabilito lo stato della mappa:
+    // così Zaino e Formazione leggono davvero "tra nodi", non il pannello
+    // appena chiuso (Rifugio, Dojo, ricompensa o fight).
+    refreshBottomPanel();
 
     map.replaceChildren();
 
@@ -6930,8 +6791,12 @@ PokeMisteryRL.UI = (() => {
           ?.classList.toggle("dead", hp <= 0);
       });
       (battle.enemies || []).forEach((foe, index) => {
+        const maxHp = Math.max(1, Number(foe?.maxHp) || 1);
+        const hp = clamp(Number(foe?.hp) || 0, 0, maxHp);
+        const bar = $(`test2ArenaEnemy${index}Hp`);
+        if(bar) bar.style.width = `${hp / maxHp * 100}%`;
         document.querySelector(`#bottomCampagna [data-battle-enemy="${index}"]`)
-          ?.classList.toggle("dead", Number(foe?.hp) <= 0);
+          ?.classList.toggle("dead", hp <= 0);
       });
     }
 
@@ -7124,6 +6989,7 @@ PokeMisteryRL.UI = (() => {
         pokemon?.__campaignPoisoned && "status-poisoned",
         Number(pokemon?.__campaignStunTurns) > 0 && "status-stunned"
       ].filter(Boolean).join(" ");
+      const battlePokemonImage = pokemon => `<img src="${sprite(pokemon?.immagine)}" alt="${pokemon?.nome || "Pokémon"}">`;
 
       return `
         <div id="battleFinal" class="${isBoss ? "boss-battle" : ""} ${enemies.length > 1 ? "boss-duo multi-enemy" : ""} ${isTestCampaign() ? "test-battle" : ""} ${battle?.formationPending ? "formation-open" : ""}">
@@ -7145,21 +7011,15 @@ PokeMisteryRL.UI = (() => {
             ${testBattle ? `<div class="bf-versus" aria-label="Scontro ${testPlayers.filter(Boolean).length} contro ${enemies.length}"><b>${testPlayers.filter(Boolean).length}</b><span>VS</span><b>${enemies.length}</b></div><div class="bf-turn-control"><b>TURNO ${Math.max(1, Number(battle?.turn || 0) + 1)}</b><label><input type="checkbox" ${battle?.formationRequested ? "checked" : ""} onchange="queueBattleFormationChange(this.checked)"> CAMBIO FORMAZIONE</label></div>` : ""}
             ${testBattle && battle?.formationPending ? `<div class="bf-formation-panel"><b>FORMAZIONE</b><small>Trascina un Pokémon nello slot desiderato.</small></div>` : ""}
 
-            ${testBattle ? `<div class="bf-player-squad">${testPlayers.map((pokemon, index) => pokemon ? `<div class="bf-sprite ${Number(pokemon.hp) <= 0 ? "dead" : ""} ${statusClass(pokemon)} ${index === 0 ? "s1" : index === 1 ? "s2" : `team-${index - 2}`} team-battle-sprite" data-battle-player="${index}" data-formation-slot="${testPlayers.length - index}" draggable="true" ondragstart="PokeMisteryRL.UI.dragTestBottomPokemon(event,${index})" ondragover="PokeMisteryRL.UI.allowTestBottomDrop(event)" ondrop="PokeMisteryRL.UI.dropTestBottomPokemon(event,${index})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">${statusParticles(pokemon)}${Number(pokemon.__campaignCloneHp) > 0 && beetleCloneSprite ? `<img class="bf-beetle-clone" src="${sprite(beetleCloneSprite)}" alt="Clone Coleottero">` : ""}</div>` : "").join("")}</div>` : `<div class="bf-sprite s1">
-              <img
-                src="${sprite(s1.immagine)}"
-                alt="${s1.nome}"
-              >
+            ${testBattle ? `<div class="bf-player-squad">${testPlayers.map((pokemon, index) => pokemon ? `<div class="bf-sprite ${Number(pokemon.hp) <= 0 ? "dead" : ""} ${statusClass(pokemon)} ${index === 0 ? "s1" : index === 1 ? "s2" : `team-${index - 2}`} team-battle-sprite" data-battle-player="${index}" data-formation-slot="${testPlayers.length - index}" draggable="true" ondragstart="PokeMisteryRL.UI.dragTestBottomPokemon(event,${index})" ondragover="PokeMisteryRL.UI.allowTestBottomDrop(event)" ondrop="PokeMisteryRL.UI.dropTestBottomPokemon(event,${index})">${battlePokemonImage(pokemon)}${statusParticles(pokemon)}${Number(pokemon.__campaignCloneHp) > 0 && beetleCloneSprite ? `<img class="bf-beetle-clone" src="${sprite(beetleCloneSprite)}" alt="Clone Coleottero">` : ""}</div>` : "").join("")}</div>` : `<div class="bf-sprite s1">
+              ${battlePokemonImage(s1)}
             </div>
 
             ${
               s2
                 ? `
                   <div class="bf-sprite s2">
-                    <img
-                      src="${sprite(s2.immagine)}"
-                      alt="${s2.nome}"
-                    >
+                    ${battlePokemonImage(s2)}
                   </div>
                 `
                 : `
@@ -7172,7 +7032,7 @@ PokeMisteryRL.UI = (() => {
             <div class="bf-enemy-squad">
               ${enemies.map((foe, index) => `
                 <div class="bf-sprite enemy enemy-${index} ${statusClass(foe)} ${Number(foe.hp) <= 0 ? "dead" : ""} ${index === 1 ? "enemy2" : ""}">
-                  <img src="${sprite(foe.immagine)}" alt="${foe.nome}">
+                  ${battlePokemonImage(foe)}
                   ${testBattle ? statusParticles(foe) : ""}
                 </div>
               `).join("")}
@@ -7220,20 +7080,21 @@ PokeMisteryRL.UI = (() => {
 
   // Test2: il bottom rimane invariato e aggiunge solo gli avversari a destra.
   const buildTest2ArenaTemplate = () => {
+    const battlePokemonImage = pokemon => `<img src="${sprite(pokemon?.immagine)}" alt="${pokemon?.nome || "Pokémon"}">`;
     const battle = PKM_RUN?.battle;
+    const defaultFormationPositions = {0:3, 1:4, 2:5};
+    PKM_RUN.test2ScenePositions ||= {...defaultFormationPositions};
+    const formationPositionFor = formationSlot => clamp(Number(PKM_RUN.test2ScenePositions?.[formationSlot] ?? defaultFormationPositions[formationSlot] ?? 4), 0, 8);
     const players = [
-      { pokemon:PKM_RUN?.activePokemon, playerIndex:0, slot:2 },
-      { pokemon:PKM_RUN?.secondActive, playerIndex:1, slot:3 },
-      { pokemon:PKM_RUN?.teamSlots?.[0], playerIndex:2, slot:0, spectator:true }
+      { pokemon:PKM_RUN?.activePokemon, playerIndex:0, slot:2, formationSlot:0 },
+      { pokemon:PKM_RUN?.secondActive, playerIndex:1, slot:3, formationSlot:1 },
+      { pokemon:PKM_RUN?.teamSlots?.[0], playerIndex:2, slot:0, formationSlot:2, spectator:true }
     ];
     const enemies = Array.isArray(battle?.enemies) && battle.enemies.length
       ? battle.enemies : [battle?.enemy].filter(Boolean);
     const pendingWaves = Array.isArray(battle?.wavePreviews)
       ? battle.wavePreviews.flat().filter(Boolean)
       : [];
-    // Sei posizioni possibili (3 righe × 2 colonne), ma al massimo quattro
-    // vengono occupate. Le salviamo nella battaglia per non far saltare gli
-    // avversari fra un aggiornamento HP e l'altro.
     const previousSlots = Array.isArray(battle?.enemySlots) ? battle.enemySlots : [];
     const usedSlots = new Set();
     const enemySlots = enemies.map((_, index) => {
@@ -7248,15 +7109,19 @@ PokeMisteryRL.UI = (() => {
       return selected;
     });
     if(battle) battle.enemySlots = enemySlots;
-    return `<div id="bottomCampagna" class="bottom-campagna test2-fight-bottom" data-scene="${getTest2BottomScene()}"><span class="test2-fight-versus" aria-label="Squadra contro avversari">VS</span><div class="bottom-campagna-formation">${players.map(({pokemon, playerIndex, slot}) => {
+    return `<div id="bottomCampagna" class="bottom-campagna test2-fight-bottom" data-scene="${getTest2BottomScene()}"><span class="test2-fight-versus" aria-label="Squadra contro avversari">VS</span><div class="bottom-campagna-formation">${players.map(({pokemon, playerIndex, slot, formationSlot}) => {
       if(!pokemon) return "";
       const maxHp = Math.max(1, Number(pokemon.maxHp) || 1);
       const hpPercent = clamp((Number(pokemon.hp) || 0) / maxHp * 100, 0, 100);
       const isSceneMember = slot === 0 || slot >= 2;
-      return `<div class="bottom-campagna-member member-${slot} ${isSceneMember ? "starter" : "ally"} ${Number(pokemon.hp) <= 0 ? "dead" : ""}" data-battle-player="${playerIndex}"><span class="bottom-campagna-types" aria-label="Tipi di ${pokemon.nome}">${bottomTypeBadges(pokemon)}</span><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">${isSceneMember ? `<i class="bottom-campagna-hp"><b id="test2ArenaPlayer${playerIndex}Hp" style="width:${hpPercent}%"></b></i>` : ""}</div>`;
-    }).join("")}</div><div class="test2-enemy-formation">${enemies.map((pokemon, index) => `<div class="test2-enemy-sprite enemy-${index} enemy-slot-${enemySlots[index]} ${Number(pokemon.hp) <= 0 ? "dead" : ""}" data-battle-enemy="${index}"><span class="bottom-campagna-types" aria-label="Tipi di ${pokemon.nome}">${bottomTypeBadges(pokemon)}</span><em class="test2-enemy-level">LV ${pokemon.level || 1}</em><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"></div>`).join("")}</div>${pendingWaves.length ? `<div class="test2-wave-reserve" aria-label="Avversari in attesa">${pendingWaves.map(pokemon => `<img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">`).join("")}</div>` : ""}${buildTest2UtilityBar()}</div>`;
+      const formationPosition = formationPositionFor(formationSlot);
+      return `<div class="bottom-campagna-member member-${slot} test2-fight-position-${formationPosition} ${isSceneMember ? "starter" : "ally"} ${Number(pokemon.hp) <= 0 ? "dead" : ""}" data-battle-player="${playerIndex}" data-formation-position="${formationPosition}">${battlePokemonImage(pokemon)}<span class="test2-scene-info"><b class="test2-scene-name">${pokemon.nome}</b><em class="test2-scene-level">LV ${pokemon.level || 1}</em><small class="test2-scene-move-level">MOSSA LV ${pokemon.sk || pokemon.skills?.[0]?.skillLevel || 1}</small><span class="bottom-campagna-types test2-scene-types" aria-label="Tipi di ${pokemon.nome}">${bottomTypeBadges(pokemon)}</span><i class="bottom-campagna-hp test2-scene-hp"><b id="test2ArenaPlayer${playerIndex}Hp" style="width:${hpPercent}%"></b></i></span></div>`;
+    }).join("")}</div><div class="test2-enemy-formation">${enemies.map((pokemon, index) => {
+      const maxHp = Math.max(1, Number(pokemon.maxHp) || 1);
+      const hpPercent = clamp((Number(pokemon.hp) || 0) / maxHp * 100, 0, 100);
+      return `<div class="test2-enemy-sprite enemy-${index} enemy-slot-${enemySlots[index]} ${Number(pokemon.hp) <= 0 ? "dead" : ""}" data-battle-enemy="${index}">${battlePokemonImage(pokemon)}<span class="test2-scene-info test2-enemy-scene-info"><b class="test2-scene-name">${pokemon.nome}</b><em class="test2-scene-level">LV ${pokemon.level || 1}</em><small class="test2-scene-move-level">MOSSA LV ${pokemon.sk || pokemon.skills?.[0]?.skillLevel || 1}</small><span class="bottom-campagna-types test2-scene-types" aria-label="Tipi di ${pokemon.nome}">${bottomTypeBadges(pokemon)}</span><i class="bottom-campagna-hp test2-scene-hp"><b id="test2ArenaEnemy${index}Hp" style="width:${hpPercent}%"></b></i></span></div>`;
+    }).join("")}</div>${pendingWaves.length ? `<div class="test2-wave-reserve" aria-label="Avversari in attesa">${pendingWaves.map(battlePokemonImage).join("")}</div>` : ""}${buildTest2UtilityBar()}</div>`;
   };
-
 
   const getBattleSpriteSelector = target => {
     const key = String(target);
@@ -7643,6 +7508,7 @@ PokeMisteryRL.UI = (() => {
     return true;
   };
   window.useTestBackpackItem = (itemId, index) => {
+    if(isTest2Mode() && !isTest2BackpackSession()) return false;
     const pokemon = testBottomSlots()[Number(index)];
     const db = window.PokeMisteryRL_Items?.DB_ITEMS || window.DB_ITEMS || {};
     const item = db[itemId];
@@ -7666,17 +7532,170 @@ PokeMisteryRL.UI = (() => {
   };
 
   const dragTestBottomPokemon = (event, index) => {
+    if(PKM_RUN?.battle || !PKM_RUN?.test2FormationEditing){ event.preventDefault(); return; }
     event.dataTransfer?.setData("text/plain", String(index));
     event.dataTransfer.effectAllowed = "move";
   };
   const allowTestBottomDrop = event => event.preventDefault();
+  const renderTest2FormationMap = () => {
+    const map = $("map");
+    if(!map || !PKM_RUN?.test2FormationEditing) return false;
+    const defaults = {0:3, 1:4, 2:5};
+    PKM_RUN.test2ScenePositions ||= {...defaults};
+    const slots = testBottomSlots();
+    const positionFor = index => clamp(Number(PKM_RUN.test2ScenePositions[index] ?? defaults[index] ?? 4), 0, 8);
+    map.className = "test2-formation-map";
+    map.innerHTML = `<section class="test2-formation-editor"><header><span>FORMAZIONE</span><small>Trascina un Pokémon in uno dei nove box.</small><button type="button" onclick="PokeMisteryRL.UI.toggleTest2FormationEditor()" aria-label="Chiudi">×</button></header><div class="test2-formation-grid">${Array.from({length:9}, (_, position) => { const owner = slots.findIndex((pokemon, index) => pokemon && positionFor(index) === position); const pokemon = owner >= 0 ? slots[owner] : null; return `<div class="test2-formation-cell ${pokemon ? 'occupied' : ''}" ondragover="PokeMisteryRL.UI.allowTestBottomDrop(event)" ondrop="PokeMisteryRL.UI.dropTest2Placement(event,${position})">${pokemon ? `<button type="button" draggable="true" ondragstart="PokeMisteryRL.UI.dragTestBottomPokemon(event,${owner})" title="${pokemon.nome}"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b></button>` : `<i>+</i>`}</div>`; }).join('')}</div></section>`;
+    return true;
+  };
+  const toggleTest2FormationEditor = () => {
+    if(!PKM_RUN || PKM_RUN.battle) return false;
+    if(!PKM_RUN.test2FormationEditing && !canEditTest2Formation()) return false;
+    PKM_RUN.test2FormationEditing = !PKM_RUN.test2FormationEditing;
+    if(PKM_RUN.test2FormationEditing) renderTest2FormationMap();
+    else PokeMisteryRL.UI.render();
+    return PKM_RUN.test2FormationEditing;
+  };
+  const toggleTest2UtilityBar = () => {
+    if(!PKM_RUN) return false;
+    PKM_RUN.test2UtilityExpanded = !PKM_RUN.test2UtilityExpanded;
+    const bar = document.querySelector(".test2-utility-bar");
+    if(!bar) return PKM_RUN.test2UtilityExpanded;
+    bar.classList.toggle("expanded", PKM_RUN.test2UtilityExpanded);
+    const button = bar.querySelector(".test2-utility-toggle");
+    if(button){
+      button.textContent = PKM_RUN.test2UtilityExpanded ? "×" : "+";
+      button.setAttribute("aria-expanded", String(!!PKM_RUN.test2UtilityExpanded));
+      button.setAttribute("aria-label", PKM_RUN.test2UtilityExpanded ? "Richiudi comandi" : "Apri comandi");
+      button.title = PKM_RUN.test2UtilityExpanded ? "Richiudi" : "Altri comandi";
+    }
+    return PKM_RUN.test2UtilityExpanded;
+  };
+  const decorateTest2ScenePngs = () => {
+    const bottom = $("bottomCampagna");
+    if(!bottom) return false;
+    const scene = getTest2BottomScene();
+    const editing = !!PKM_RUN?.test2SceneBuildingEditing;
+    PKM_RUN.test2ScenePngLayout ||= {};
+    const saved = PKM_RUN.test2ScenePngLayout[scene] ||= {};
+    [...bottom.querySelectorAll("img")].forEach((image, index) => {
+      if(image.closest(".test2-formation-order")) return;
+      const key = image.closest(".test2-scene-building") ? "building" : `${image.closest(".bottom-campagna-member")?.className || "scene"}-${index}`;
+      image.dataset.test2PngKey = key;
+      const offset = saved[key] || {x:0,y:0};
+      image.style.translate = `${Number(offset.x) || 0}px ${Number(offset.y) || 0}px`;
+      image.classList.toggle("test2-png-editable", editing);
+      image.onpointerdown = editing ? event => {
+        if(event.target.closest("button")) return;
+        if(image.closest(".test2-scene-building")) startTest2SceneBuildingEdit(event, "move");
+        else startTest2GenericPngEdit(event);
+      } : null;
+    });
+    return true;
+  };
+  const startTest2GenericPngEdit = event => {
+    if(!PKM_RUN?.test2SceneBuildingEditing) return false;
+    const image = event.currentTarget;
+    const bottom = $("bottomCampagna");
+    if(!image || !bottom) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const scene = getTest2BottomScene();
+    const key = image.dataset.test2PngKey;
+    PKM_RUN.test2ScenePngLayout ||= {};
+    const saved = PKM_RUN.test2ScenePngLayout[scene] ||= {};
+    const original = {...(saved[key] || {x:0,y:0})};
+    const start = {x:event.clientX, y:event.clientY};
+    image.setPointerCapture?.(event.pointerId);
+    const move = pointerEvent => {
+      saved[key] = {x:Math.round(Number(original.x || 0) + pointerEvent.clientX - start.x), y:Math.round(Number(original.y || 0) + pointerEvent.clientY - start.y)};
+      image.style.translate = `${saved[key].x}px ${saved[key].y}px`;
+    };
+    const end = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", end);
+      document.removeEventListener("pointercancel", end);
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", end, {once:true});
+    document.addEventListener("pointercancel", end, {once:true});
+    return true;
+  };
+  const toggleTest2SceneBuildingEditor = () => {
+    if(!PKM_RUN || PKM_RUN.battle) return false;
+    PKM_RUN.test2SceneBuildingEditing = !PKM_RUN.test2SceneBuildingEditing;
+    renderTest2SceneBuilding();
+    decorateTest2ScenePngs();
+    return PKM_RUN.test2SceneBuildingEditing;
+  };
+  const startTest2SceneBuildingEdit = (event, mode) => {
+    if(!PKM_RUN?.test2SceneBuildingEditing) return false;
+    const buildingElement = event.currentTarget?.closest(".test2-scene-building");
+    const scene = buildingElement?.dataset?.sceneBuilding;
+    const surface = $("bottomCampagna");
+    const current = getTest2SceneBuilding(scene);
+    if(!buildingElement || !surface || !current) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const rect = surface.getBoundingClientRect();
+    const original = {x:Number(current.x), y:Number(current.y), size:Number(current.size)};
+    buildingElement.setPointerCapture?.(event.pointerId);
+    const move = pointerEvent => {
+      const layout = PKM_RUN.test2SceneBuildingLayout[scene] ||= {};
+      if(mode === "resize"){
+        const delta = (pointerEvent.clientX - startX) / Math.max(1, rect.width) * 100;
+        layout.size = clamp(original.size + delta, 18, 95);
+      } else {
+        layout.x = clamp(original.x + (pointerEvent.clientX - startX) / Math.max(1, rect.width) * 100, 0, 100);
+        layout.y = clamp(original.y + (pointerEvent.clientY - startY) / Math.max(1, rect.height) * 100, 0, 100);
+      }
+      renderTest2SceneBuilding();
+    };
+    const end = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", end);
+      document.removeEventListener("pointercancel", end);
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", end, {once:true});
+    document.addEventListener("pointercancel", end, {once:true});
+    return true;
+  };
+  const flipTest2SceneBuilding = () => {
+    const scene = getTest2BottomScene();
+    const current = getTest2SceneBuilding(scene);
+    if(!current) return false;
+    PKM_RUN.test2SceneBuildingLayout[scene] ||= {};
+    PKM_RUN.test2SceneBuildingLayout[scene].flip = !current.flip;
+    renderTest2SceneBuilding();
+    return PKM_RUN.test2SceneBuildingLayout[scene].flip;
+  };
+  const dropTest2Placement = (event, position) => {
+    event.preventDefault();
+    if(!PKM_RUN?.test2FormationEditing || PKM_RUN.battle || !canEditTest2Formation()) return false;
+    const source = Number(event.dataTransfer?.getData("text/plain"));
+    const slots = testBottomSlots();
+    if(!Number.isInteger(source) || !slots[source]) return false;
+    const defaults = {0:3, 1:4, 2:5};
+    PKM_RUN.test2ScenePositions ||= {...defaults};
+    const target = clamp(Number(position) || 0, 0, 8);
+    const current = clamp(Number(PKM_RUN.test2ScenePositions[source] ?? defaults[source] ?? 4), 0, 8);
+    const occupant = slots.findIndex((pokemon, index) => pokemon && index !== source && clamp(Number(PKM_RUN.test2ScenePositions[index] ?? defaults[index] ?? 4), 0, 8) === target);
+    PKM_RUN.test2ScenePositions[source] = target;
+    if(occupant >= 0) PKM_RUN.test2ScenePositions[occupant] = current;
+    refreshBottomPanel();
+    renderTest2FormationMap();
+    return true;
+  };
   const dropTestBottomPokemon = (event, targetIndex) => {
     event.preventDefault();
     const sourceIndex = Number(event.dataTransfer?.getData("text/plain"));
     const target = Number(targetIndex);
     if(!Number.isInteger(sourceIndex) || sourceIndex === target || !PKM_RUN?.mode || !isTestCampaign()) return;
     const slots = testBottomSlots();
-    if(!slots[sourceIndex] || !slots[target]) return;
+    if(!slots[sourceIndex]) return;
     const setSlot = (index, pokemon) => {
       if(index === 0) PKM_RUN.activePokemon = pokemon;
       else if(index === 1) PKM_RUN.secondActive = pokemon;
@@ -7777,6 +7796,16 @@ PokeMisteryRL.UI = (() => {
     allowBackpackDrop,
     dropBackpackItem,
     dropBackpackItemToScene,
+    startTest2BackpackTouch,
+    moveTest2BackpackTouch,
+    endTest2BackpackTouch,
+    highlightTest2BackpackTarget,
+    clearTest2BackpackTarget,
+    startSceneBackpackTouch,
+    moveSceneBackpackTouch,
+    endSceneBackpackTouch,
+    highlightSceneBackpackTarget,
+    clearSceneBackpackTarget,
     startBackpackItemHold,
     cancelBackpackItemHold,
 
@@ -7790,6 +7819,13 @@ PokeMisteryRL.UI = (() => {
     dropTest2FormationSlot,
     dragTestBottomPokemon,
     allowTestBottomDrop,
+    toggleTest2UtilityBar,
+    toggleTest2SceneBuildingEditor,
+    startTest2SceneBuildingEdit,
+    startTest2GenericPngEdit,
+    flipTest2SceneBuilding,
+    toggleTest2FormationEditor,
+    dropTest2Placement,
     dropTestBottomPokemon
 
   };
@@ -7798,252 +7834,7 @@ PokeMisteryRL.UI = (() => {
 
 
   
-const recruitLevel = (p) =>
-  Math.max(1, Number(p?.level) || 1);
-
-const recruitSkill = (p) => {
-
-  if(!p) return null;
-
-  if(
-    Array.isArray(p.skills) &&
-    p.skills.length
-  ){
-    return p.skills[p.skills.length - 1];
-  }
-
-  return null;
-};
-
-const recruitCard = (
-  pokemon,
-  title
-) => {
-
-  if(!pokemon){
-    return `
-      <div class="recruit-empty">
-        Nessun Pokémon
-      </div>
-    `;
-  }
-
-  const sk =
-    recruitSkill(pokemon);
-
-  return `
-    <div class="recruit-card">
-
-      <div class="recruit-card-title">
-        ${title}
-      </div>
-
-      <div class="recruit-card-main">
-
-        <div class="recruit-card-sprite">
-          <img
-            src="${sprite(pokemon.immagine)}"
-            alt="${pokemon.nome || "Pokémon"}"
-          >
-        </div>
-
-        <div class="recruit-card-info">
-
-          <b class="recruit-name">
-            ${pokemon.nome || "Pokémon"}
-          </b>
-
-          <span>
-            LV ${recruitLevel(pokemon)}
-          </span>
-
-          <span>
-            HP ${pokemon.hp ?? 0}/${pokemon.maxHp ?? 0}
-          </span>
-
-          <div class="recruit-skill">
-            <small>SKILL</small>
-            <b>
-              ${
-                sk?.name ||
-                sk?.nome ||
-                "--"
-              }
-            </b>
-            <span>
-              PWR ${
-                sk?.pwr ??
-                sk?.power ??
-                "--"
-              }
-            </span>
-          </div>
-
-        </div>
-
-      </div>
-
-      <div class="recruit-stats">
-
-        <div>
-          <small>ATK</small>
-          <b>${pokemon.stats?.atk ?? 0}</b>
-        </div>
-
-        <div>
-          <small>DEF</small>
-          <b>${pokemon.stats?.dif ?? 0}</b>
-        </div>
-
-        <div>
-          <small>SPD</small>
-          <b>${pokemon.stats?.spd ?? 0}</b>
-        </div>
-
-      </div>
-
-    </div>
-  `;
-};
-
-const getFullTeamSwitchOptions = () => {
-
-  const options = [];
-
-  if(PKM_RUN?.secondActive){
-
-    options.push({
-      key:"s2",
-      label:"PARTNER",
-      pokemon:PKM_RUN.secondActive
-    });
-  }
-
-  (PKM_RUN?.teamSlots || [])
-    .forEach(
-      (pokemon,index) => {
-
-        if(!pokemon) return;
-
-        options.push({
-          key:String(index),
-          label:`RISERVA ${index + 1}`,
-          pokemon
-        });
-      }
-    );
-
-  return options;
-};
-
-/* Chiusura sicura della schermata quando la squadra è piena.
-   Non lascia stati di reclutamento sospesi e riporta la run alla mappa. */
-window.cancelFullTeamRecruitment = () => {
-  if(!window._pendingRecruitment){
-    closeModal();
-    busy = 0;
-    PokeMisteryRL.UI.render();
-    return true;
-  }
-
-  const name = window._pendingRecruitment.pokemon?.nome || "Pokémon";
-  window._pendingRecruitment = null;
-  window._pendingReplacement = null;
-  closeModal();
-  busy = 0;
-  next(`${name} non è stato reclutato.`);
-  return true;
-};
-
-const showFullTeamSwitch = () => {
-
-  const pending =
-    window._pendingRecruitment;
-
-  if(!pending){
-    return;
-  }
-
-  const options =
-    getFullTeamSwitchOptions();
-
-  if(isTest2Mode()){
-    const map = $("map");
-    if(map){
-      map.className = "test2-recruit-choice";
-      map.innerHTML = `<section class="test2-recruit-replace-card"><span>⭐ SQUADRA COMPLETA</span><h2>Chi vuoi sostituire?</h2><p>${pending.pokemon.nome} entrerà nella squadra al posto del Pokémon scelto.</p><div>${options.map(option => `<button type="button" onclick="window.confirmTest2RecruitReplacement('${option.key}')"><img src="${sprite(option.pokemon.immagine)}" alt="${option.pokemon.nome}"><span>${option.label}</span><b>${option.pokemon.nome}</b><small>SOSTITUISCI</small></button>`).join("")}</div><button type="button" class="test2-recruit-cancel" onclick="window.rejectRecruitment()">ANNULLA</button></section>`;
-    }
-    return;
-  }
-
-  modal(`
-    <div class="recruitment-box recruit-full-team">
-
-      <button
-        type="button"
-        class="recruit-close-x"
-        onclick="window.cancelFullTeamRecruitment()"
-      >
-        ✕
-      </button>
-
-      <h2>
-        ⭐ NUOVO POKÉMON
-      </h2>
-
-      ${recruitCard(
-        pending.pokemon,
-        "POKÉMON DA RECLUTARE"
-      )}
-
-      <div class="recruit-divider">
-        SQUADRA PIENA — SCEGLI CHI SOSTITUIRE
-      </div>
-
-      <div class="recruit-options">
-
-        ${
-          options.length
-            ? options.map(option => `
-                <button
-                  type="button"
-                  class="recruit-option" data-recruit-key="${option.key}"
-                  onclick="event.preventDefault(); event.stopPropagation(); window.compareRecruitment('${option.key}');"
-                >
-
-                  <img
-                    src="${sprite(option.pokemon.immagine)}"
-                    alt="${option.pokemon.nome || "Pokémon"}"
-                  >
-
-                  <span>
-                    <b>
-                      ${option.pokemon.nome || "Pokémon"}
-                    </b>
-                    <small>
-                      ${option.label} · LV ${recruitLevel(option.pokemon)}
-                    </small>
-                  </span>
-
-                  <strong>
-                    SOSTITUISCI
-                  </strong>
-
-                </button>
-              `).join("")
-            : `
-                <div class="recruit-empty">
-                  Nessun Pokémon sostituibile.
-                </div>
-              `
-        }
-
-      </div>
-
-    </div>
-  `);
-};
-
+// Gli helper del reclutamento vivono nel relativo modulo.
 // EXPORT
 
 const {
@@ -8108,7 +7899,7 @@ window.openStarterPreview = () => {
 
   fillPreview(p, `
     ${renderHeldEquipment(p,"s1")}
-    <p style="opacity:.5;font-size:11px">Starter principale</p>
+    <p class="preview-subtle">Starter principale</p>
   `);
 };
 
@@ -8137,25 +7928,12 @@ window.openSecondPreview = () => {
       );
 
   let choices = `
-    <div style="
-      margin-top:10px;
-      padding-top:8px;
-      border-top:1px solid rgba(49,85,121,.45);
-    ">
-      <div style="
-        font-size:11px;
-        font-weight:bold;
-        margin-bottom:7px;
-        color:#55d9ff;
-      ">
+    <div class="partner-choice-panel">
+      <div class="partner-choice-title">
         ⭐ SCEGLI IL PARTNER
       </div>
 
-      <div style="
-        font-size:9px;
-        opacity:.65;
-        margin-bottom:7px;
-      ">
+      <div class="partner-choice-copy">
         Seleziona un Pokémon della squadra.
       </div>
   `;
@@ -8233,7 +8011,7 @@ window.openSecondPreview = () => {
   if(current){
 
     choices += `
-      <div style="margin-top:8px">
+      <div class="partner-choice-actions">
 
         <button
           type="button"
@@ -8302,8 +8080,8 @@ window.openTeamPreview = (i) => {
   // usa fillPreview se esiste, altrimenti fallback manuale
   if (typeof fillPreview === 'function') {
     fillPreview(p, `
-      <p style="font-size:11px;opacity:.6;margin:0 0 8px">ID ${p.id} | ${(p.tipi||[]).join('/')} | LV ${p.level||1} | HP ${p.hp}/${p.maxHp}</p>
-      <div class="pp-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+      <p class="preview-meta">ID ${p.id} | ${(p.tipi||[]).join('/')} | LV ${p.level||1} | HP ${p.hp}/${p.maxHp}</p>
+      <div class="pp-actions preview-actions">
         <button onclick="equipAsSecond(${i})">⭐ Imposta compagno</button>
         ${typeof equipToStarter === 'function'? `<button onclick="equipToStarter(0,${i})">➡️ Starter</button><button onclick="equipToStarter(1,${i})">➡️ Partner</button>` : ``}
         <button onclick="releasePoke(${i})">🗑️ Rilascia</button>
@@ -8317,8 +8095,8 @@ window.openTeamPreview = (i) => {
     document.getElementById('ppHpText').textContent = `${p.hp}/${p.maxHp}`;
     document.getElementById('ppTypes').innerHTML = (p.tipi||[]).map(t=>`<span class="type-badge type-${t}">${t}</span>`).join('');
     document.getElementById('ppCustomContent').innerHTML = `
-      <p style="font-size:11px;opacity:.6">ID ${p.id} | ${(p.tipi||[]).join('/')}</p>
-      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+      <p class="preview-meta">ID ${p.id} | ${(p.tipi||[]).join('/')}</p>
+      <div class="preview-actions">
         <button onclick="equipAsSecond(${i})">⭐ Equipaggia come Starter2</button>
         <button onclick="releasePoke(${i})">🗑️ Rilascia</button>
       </div>`;
@@ -8331,312 +8109,13 @@ window.pick = pick; window.next = next; window.flee = flee;
 window.quickReset = PokeMisteryRL.Run.quickReset;
 window.goMenu = PokeMisteryRL.Run.goMenu;
 window.openHomeMenu = PokeMisteryRL.Run.openHomeMenu;
-window.openGuideMenu = PokeMisteryRL.Run.openGuideMenu;
-window.openGuideCategory = PokeMisteryRL.Run.openGuideCategory;
-window.openGuidePage = PokeMisteryRL.Run.openGuidePage;
-window.showBattleGuide = PokeMisteryRL.Run.showBattleGuide;
 window.skill = skill; window.rifugio = rifugio; window.upgradeSkill = upgradeSkill;
 window.toggleRunLog = toggleRunLog;
 window.showInventory = () => PokeMisteryRL.UI.showInventory();
 window.hideInventory = () => PokeMisteryRL.UI.hideInventory();
 window.toggleInventory = () => PokeMisteryRL.UI.toggleInventory();
 window.changeTeamPreview = (d) => PokeMisteryRL.UI.changeTeamPreview(d);
-const shop = () => {
-
-  if(!PKM_RUN){
-    return;
-  }
-
-  const db =
-    window.PokeMisteryRL_Items?.DB_ITEMS ||
-    window.DB_ITEMS ||
-    null;
-
-  const items =
-    db && typeof db === "object"
-      ? Object.values(db).filter(item => item && item.id)
-      : [];
-
-  if(!items.length){
-    modal(`
-      <div class="center">
-        <h2>🛒 NEGOZIO</h2>
-        <p>Il database oggetti non è ancora disponibile.</p>
-        <button onclick="next('Negozio non disponibile')">
-          CONTINUA
-        </button>
-      </div>
-    `);
-    return;
-  }
-
-  const rarityPrice = {
-    comune: 50,
-    non_comune: 100,
-    rara: 175,
-    epica: 300,
-    leggendaria: 500
-  };
-
-  if(PKM_RUN.kecleonDefeated && (!Array.isArray(PKM_RUN.kecleonFreeOffers) || !PKM_RUN.kecleonFreeOffers.length)){
-    if(isTest2Mode()){
-      const bottom = $("bottomCampagna");
-      const map = $("map");
-      bottom?.querySelectorAll(".test2-shop-kecleon,.test2-kecleon-bubble").forEach(entry => entry.remove());
-      if(map){
-        map.className = "test2-shop-map";
-        map.innerHTML = `<section class="test2-shop-panel test2-shop-empty-panel"><header><span>🏪 NEGOZIO</span><button type="button" class="test2-shop-close" aria-label="Esci dal negozio" onclick="next('Negozio vuoto')">×</button></header><small>SOLD OUT</small><div class="test2-shop-empty-copy"><b>SOLD OUT</b><span>Hai preso tutti gli oggetti rimasti.</span></div></section>`;
-      }
-      return;
-    }
-    modal(`<div class="center shop-box shop-empty"><div class="shop-header"><div class="shop-header-copy"><h2>🛒 NEGOZIO</h2><span>SOLD OUT</span></div><div class="shop-wallet">💰 <b>${Number(PKM_RUN.bits) || 0}</b></div></div><p>Hai preso tutti gli oggetti rimasti.</p><button type="button" onclick="next('Negozio vuoto')">ESCI</button></div>`);
-    return;
-  }
-
-  // Gli scaffali sono persistenti per tutta la run: tornare dal dettaglio
-  // non li rimescola. Soltanto uno slot acquistato viene rifornito.
-  const savedOffers = Array.isArray(PKM_RUN.shopOffers) ? PKM_RUN.shopOffers : [];
-  const offers = PKM_RUN.kecleonDefeated
-    ? (Array.isArray(PKM_RUN.kecleonFreeOffers)
-      ? PKM_RUN.kecleonFreeOffers.map(entry => ({ item: items.find(item => String(item.id) === String(entry.id)), price:0 })).filter(entry => entry.item)
-      : [])
-    : savedOffers.map(entry => ({ item: items.find(item => String(item.id) === String(entry.id)), price:Number(entry.price) || 0 })).filter(entry => entry.item);
-  const shownIds = new Set(offers.map(entry => String(entry.item.id)));
-  const pool = items.filter(item => !shownIds.has(String(item.id)));
-  const theftAttempts = Math.max(
-    0,
-    Number(PKM_RUN.shopTheftAttempts ?? PKM_RUN.shopThefts) || 0
-  );
-  const kecleonWarning =
-    theftAttempts <= 0 ? "Kecleon ti osserva..." :
-    theftAttempts === 1 ? "Kecleon ti osserva...  ..." :
-    theftAttempts === 2 ? "Kecleon ti osserva...  ... ..." :
-    "Kecleon pare scocciato";
-
-  while(!PKM_RUN.kecleonDefeated && pool.length && offers.length < 8){
-    const index =
-      Math.floor(Math.random() * pool.length);
-
-    const item =
-      pool.splice(index,1)[0];
-
-    offers.push({
-      item,
-      price:
-        rarityPrice[item.rarita] ??
-        rarityPrice.comune
-    });
-  }
-
-  if(!PKM_RUN.kecleonDefeated){
-    PKM_RUN.shopOffers = offers.map(({item, price}) => ({ id:item.id, price }));
-    PKM_RUN.lastShopOffers = PKM_RUN.shopOffers.map(entry => ({ ...entry }));
-  }
-
-  // Test2: Kecleon entra nella scena; gli scaffali sostituiscono la mappa.
-  if(isTest2Mode()){
-    const bottom = $("bottomCampagna");
-    const map = $("map");
-    if(bottom){
-      // Il negozio non eredita mai personaggi o sprite della scena precedente.
-      bottom.querySelectorAll(".test2-enemy-formation,.test2-toll-group,.test2-recruit-candidate,.test2-dojo-challenger,.test2-shop-kecleon,.test2-kecleon,.test2-kecleon-bubble").forEach(entry => entry.remove());
-      if(!PKM_RUN.kecleonDefeated){
-        bottom.insertAdjacentHTML("beforeend", `<img class="test2-shop-kecleon" src="${sprite("kecleon.png")}" alt="Kecleon">`);
-        const warning = theftAttempts ? ["Ehi! Quello è mio!", "Ti sto osservando…", "Ultimo avvertimento!"][Math.min(2,theftAttempts - 1)] : "";
-        if(warning) bottom.insertAdjacentHTML("beforeend", `<span class="test2-kecleon-bubble">${warning}</span>`);
-      }
-    }
-    if(map){
-      map.className = "test2-shop-map";
-      map.innerHTML = `<section class="test2-shop-panel"><header><span>🏪 NEGOZIO</span><button type="button" class="test2-shop-close" aria-label="Esci dal negozio" onclick="next('Negozio visitato')">×</button></header><small>Scegli un oggetto</small><div class="test2-shop-grid">${offers.map(({item,price}) => `<button type="button" class="test2-shop-item" onclick="openShopItemDetail('${String(item.id).replace(/'/g,"\\'")}',${price})"><img src="${item.immagine || ""}" alt="${item.nome || item.id}"><b>${item.nome || item.id}</b><em>${PKM_RUN?.kecleonDefeated ? "GRATIS" : `💰 ${price}`}</em></button>`).join("")}</div></section>`;
-    }
-    return;
-  }
-
-  const abandonedShop = !!PKM_RUN.kecleonDefeated;
-  modal(`
-    <div class="center shop-box shop-rework">
-      <div class="shop-stage">
-        <header class="shop-header">
-          <div class="shopkeeper-frame">${abandonedShop ? "" : `<img src="${sprite("kecleon.png")}" alt="Kecleon" class="shopkeeper-sprite shopkeeper-warning-${Math.min(3, theftAttempts)}">`}</div>
-          <div class="shop-header-copy">
-            <small class="shop-eyebrow">BOTTEGA DI KECLEON</small>
-            <h2>NEGOZIO</h2>
-            <span>${abandonedShop ? "Gli oggetti rimasti sono gratis." : kecleonWarning}</span>
-          </div>
-          <div class="shop-wallet"><small>PORTAFOGLIO</small><b>💰 ${Number(PKM_RUN.bits) || 0}</b></div>
-        </header>
-
-        <section class="shop-shelves">
-          <div class="shop-shelves-title"><span>SCAFFALI</span><small>Seleziona un oggetto</small></div>
-          <div class="shop-list">
-        ${
-          offers.map(({item,price}) => `
-            <button type="button" class="shop-card" onclick="openShopItemDetail('${String(item.id).replace(/'/g,"\\'")}',${price})" aria-label="Dettagli ${item.nome || item.id}">
-              <span class="shop-icon">
-                ${item.immagine ? `<img src="${item.immagine}" alt="${item.nome || item.id}">` : (item.icon || "◈")}
-              </span>
-              <b class="shop-name">${item.nome || item.id}</b>
-            </button>
-          `).join("")
-        }${!offers.length ? `<p class="shop-no-offers">Non è rimasto alcun oggetto.</p>` : ""}
-          </div>
-        </section>
-
-        <button type="button" class="shop-leave" onclick="next('Negozio visitato')">ESCI DAL NEGOZIO</button>
-      </div>
-    </div>
-  `);
-};
-
-const openShopItemDetail = (itemId, price) => {
-  const db = window.PokeMisteryRL_Items?.DB_ITEMS || window.DB_ITEMS || {};
-  const item = db[itemId];
-  if(!item) return false;
-  const effect = item.tipo === "potenziamento_tipo"
-    ? `DMG ${getTypingBadge(item.tipo_mossa)} <b>×${(1 + (Number(item.bonus_danno) || 0)).toFixed(2)}</b>`
-    : (item.effetto || "Nessuna descrizione.");
-  if(isTest2Mode()){
-    const map = $("map");
-    if(map){
-      map.querySelector(".test2-shop-panel")?.classList.add("is-blurred");
-      map.querySelector(".test2-shop-detail")?.remove();
-      map.insertAdjacentHTML("beforeend", `<section class="test2-shop-detail"><div class="test2-shop-detail-main"><div class="test2-shop-detail-icon">${item.immagine ? `<img src="${item.immagine}" alt="${item.nome}">` : "◈"}</div><div class="test2-shop-detail-info"><span>OGGETTO</span><h2>${item.nome}</h2><p>${effect}</p><strong>${PKM_RUN?.kecleonDefeated ? "GRATIS" : `💰 ${price}`}</strong></div></div><div class="test2-shop-detail-actions"><button onclick="buyShopItem('${String(item.id).replace(/'/g,"\\'")}',${price})">${PKM_RUN?.kecleonDefeated ? "PRENDI" : "COMPRA"}</button>${PKM_RUN?.kecleonDefeated ? "" : `<button class="test2-shop-steal" onclick="stealShopItem('${String(item.id).replace(/'/g,"\\'")}')">RUBA</button>`}</div><button class="test2-shop-detail-back" onclick="shop()">← SCAFFALI</button></section>`);
-    }
-    return true;
-  }
-  modal(`<div class="center shop-item-modal"><small class="shop-item-kicker">DETTAGLI OGGETTO</small><div class="shop-item-modal-icon">${item.immagine ? `<img src="${item.immagine}" alt="${item.nome}">` : "◈"}</div><h2>${item.nome}</h2><p>${effect}</p><div class="shop-item-cost"><span>PREZZO</span><b>💰 ${price}</b></div><div class="shop-actions"><button type="button" onclick="buyShopItem('${String(item.id).replace(/'/g,"\\'")}',${price})">${PKM_RUN?.kecleonDefeated ? "PRENDI" : "COMPRA"}</button>${PKM_RUN?.kecleonDefeated ? "" : `<button type="button" class="shop-steal-btn" onclick="stealShopItem('${String(item.id).replace(/'/g,"\\'")}')">RUBA</button>`}</div><button type="button" onclick="shop()">← TORNA AGLI SCAFFALI</button></div>`);
-  return true;
-};
-window.openShopItemDetail = openShopItemDetail;
-
-const buyShopItem = (itemId, price) => {
-
-  if(!PKM_RUN){
-    return false;
-  }
-
-  const db =
-    window.PokeMisteryRL_Items ||
-    null;
-
-  const item =
-    db?.get?.(itemId) ||
-    window.DB_ITEMS?.[itemId] ||
-    null;
-
-  if(!item){
-    msg("Oggetto non disponibile.");
-    return false;
-  }
-
-  const cost =
-    Math.max(0, Math.floor(Number(price) || 0));
-
-  const money =
-    Math.max(0, Math.floor(Number(PKM_RUN.bits) || 0));
-
-  if(money < cost){
-    msg(`Servono ${cost} 💰.`);
-    return false;
-  }
-
-  if(!Array.isArray(PKM_RUN.items)){
-    PKM_RUN.items = [];
-  }
-
-  const existing =
-    PKM_RUN.items.find(
-      entry =>
-        entry &&
-        String(entry.id) === String(item.id)
-    );
-
-  if(existing){
-    existing.qty =
-      Math.max(0, Number(existing.qty) || 0) + 1;
-  }else{
-    PKM_RUN.items.push({
-      id: item.id,
-      qty: 1
-    });
-  }
-
-  PKM_RUN.bits =
-    money - cost;
-
-  if(PKM_RUN.kecleonDefeated && cost === 0 && Array.isArray(PKM_RUN.kecleonFreeOffers)){
-    PKM_RUN.kecleonFreeOffers = PKM_RUN.kecleonFreeOffers.filter(entry => String(entry.id) !== String(item.id));
-    if(!PKM_RUN.kecleonFreeOffers.length) PKM_RUN.kecleonFreeShopOpen = false;
-  }else if(!PKM_RUN.kecleonDefeated && Array.isArray(PKM_RUN.shopOffers)){
-    // Rimuove soltanto lo slot comprato: shop() lo riempirà con un nuovo item.
-    const slot = PKM_RUN.shopOffers.findIndex(entry => String(entry?.id) === String(item.id));
-    if(slot >= 0) PKM_RUN.shopOffers.splice(slot, 1);
-  }
-
-  refreshBottomPanel();
-
-  msg(`🛒 ${item.nome} acquistato!`);
-
-  shop();
-
-  return true;
-};
-
-window.shop = shop;
-window.buyShopItem = buyShopItem;
-
-const stealShopItem = (itemId) => {
-  if(!PKM_RUN) return false;
-  const attempts = Math.max(
-    0,
-    Number(PKM_RUN.shopTheftAttempts ?? PKM_RUN.shopThefts) || 0
-  );
-  // Il quarto tentativo chiama immediatamente Kecleon alla lotta.
-  if(attempts >= 3){
-    PKM_RUN.shopTheftAttempts = attempts + 1;
-    PKM_RUN.afterBattleNodeType = "shop";
-    if(isTest2Mode()){
-      const map = $("map");
-      if(map){
-        map.querySelector(".test2-shop-detail")?.remove();
-        map.querySelector(".test2-shop-panel")?.classList.remove("is-blurred");
-        map.classList.add("test2-shop-locked");
-        map.querySelector(".test2-shop-lock-overlay")?.remove();
-        map.insertAdjacentHTML("beforeend", `<section class="test2-shop-lock-overlay"><span>⚠ NEGOZIO BLOCCATO</span><h2>Kecleon ti affronta!</h2><p>Gli scaffali resteranno chiusi fino alla fine dello scontro.</p></section>`);
-      }
-    }
-    closeModal();
-    busy = 1;
-    fight(false);
-    return true;
-  }
-
-  const db = window.PokeMisteryRL_Items || null;
-  const item = db?.get?.(itemId) || window.DB_ITEMS?.[itemId] || null;
-  if(!item){ msg("Oggetto non disponibile."); return false; }
-  const successChance = [1, .75, .50][attempts] ?? 0;
-  PKM_RUN.shopTheftAttempts = attempts + 1;
-  if(Math.random() > successChance){
-    msg(`🚨 Kecleon ti ferma: non riesci a rubare ${item.nome}.`);
-    shop();
-    return false;
-  }
-  if(!Array.isArray(PKM_RUN.items)) PKM_RUN.items = [];
-  const existing = PKM_RUN.items.find(entry => entry && String(entry.id) === String(item.id));
-  if(existing) existing.qty = Math.max(0, Number(existing.qty) || 0) + 1;
-  else PKM_RUN.items.push({ id:item.id, qty:1 });
-  if(!PKM_RUN.kecleonDefeated && Array.isArray(PKM_RUN.shopOffers)){
-    const slot = PKM_RUN.shopOffers.findIndex(entry => String(entry?.id) === String(item.id));
-    if(slot >= 0) PKM_RUN.shopOffers.splice(slot, 1);
-  }
-  refreshBottomPanel();
-  msg(`🕵️ Hai rubato ${item.nome}!`);
-  shop();
-  return true;
-};
-
-window.stealShopItem = stealShopItem;
+// Negozio estratto in core/features/shop.js.
 
 window.getPokemon = getPokemon; window.getActivePokemon = getActivePokemon;
 window.getTeamStats = getTeamStats; window.PKM_DB = PKM_DB;
@@ -9086,8 +8565,8 @@ document.addEventListener("DOMContentLoaded", () => {
     upgradeSkill,
     toggleRunLog,
 
-    shop,
-    buyShopItem,
+    shop: window.shop,
+    buyShopItem: window.buyShopItem,
 
     getPokemon,
     getActivePokemon,
