@@ -6404,6 +6404,12 @@ PokeMisteryRL.UI = (() => {
       return;
     }
 
+    // Formazione e zaino sostituiscono temporaneamente la mappa con una
+    // superficie piena. Quando vengono chiusi il render normale deve prima
+    // rimuovere quelle classi, altrimenti le loro regole CSS oscurano la
+    // mappa pur avendo già ricreato i nodi.
+    map.classList.remove("test2-formation-map", "test2-backpack-map");
+    delete map.dataset.test2BackpackOpen;
     map.classList.toggle("test2-horizontal-map", isTest2Mode());
     if(isTest2Mode()){
       map.style.removeProperty("--test2-map-shift");

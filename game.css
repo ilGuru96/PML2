@@ -10081,6 +10081,25 @@ img[src*="spritemon/"]{width:100px!important;height:100px!important;object-fit:c
 }
 #bottomCampagna img.test2-png-editable{position:relative!important;z-index:30!important;cursor:grab!important;touch-action:none!important;filter:drop-shadow(0 0 3px rgba(121,237,255,.95))!important}
 #bottomCampagna img.test2-png-editable:active{cursor:grabbing!important}
+
+/* Gli oggetti devono conservare i colori originali del PNG.  Alcuni browser
+   mobili riusavano filtri del contenitore durante i passaggi tra pannelli,
+   facendo sembrare icone scure come Carbonella "in negativo". */
+.adventure-shell.test2-layout :is(
+  .test2-backpack-tile img,
+  .test2-item-info-icon img,
+  .inventory-image,
+  .quick-item-detail-icon img,
+  .event-item-reward img,
+  .shop-icon img,
+  .shop-item-modal-icon img,
+  .test2-shop-item img
+){
+  filter:none!important;
+  -webkit-filter:none!important;
+  mix-blend-mode:normal!important;
+  opacity:1!important;
+}
 #bottomCampagna .test2-scene-building.is-editing{
   z-index:24!important;pointer-events:auto!important;outline:2px dashed rgba(119,234,255,.96)!important;
   outline-offset:4px!important;border-radius:8px!important;background:rgba(70,220,255,.08)!important;
