@@ -38,6 +38,12 @@ PokeMisteryRL.Helpers = (() => {
     return n.toString();
   };
   const fmtIV = (v) =>!v? "" : v > 0? `+${v}` : `${v}`;
+  // I dati di PokéAPI arrivano in minuscolo: nel gioco mostriamo sempre il
+  // nome con l'iniziale maiuscola, senza alterare il resto della grafia.
+  const pokemonName = value => {
+    const name = String(value ?? "").trim();
+    return name ? name.charAt(0).toLocaleUpperCase("it-IT") + name.slice(1) : "Pokémon";
+  };
   const msg = (text) => {
     const el = $("eventLog");
     if (el) {
@@ -72,6 +78,15 @@ const showBattleSurface = (html) => {
       const arena = PokeMisteryRL.UI?.buildTest2ArenaTemplate?.() || html;
       // Il fight è il Bottom Campagna stesso, senza una scena o un pannello aggiuntivo.
       bottom.innerHTML = arena;
+      const floor = window.PokeMisteryRL_Modes?.getFloor?.(PKM_RUN.mode, PKM_RUN.floor);
+      const forest = String(floor?.categoria || "").toLowerCase() === "bosco";
+      const scene = forest
+        ? "./img/prove-bosco/BoscoSmeraldo-Scenario.png"
+        : "./img/prove-bosco/Grotta-Scenario.png";
+      bottom.style.setProperty("background-image", `linear-gradient(rgba(5,10,21,.08),rgba(1,4,12,.32)),url(\"${scene}\")`, "important");
+      bottom.style.setProperty("background-size", "cover", "important");
+      bottom.style.setProperty("background-position", "center bottom", "important");
+      bottom.style.setProperty("background-repeat", "no-repeat", "important");
       $("modal")?.classList.add("hidden");
       return true;
     }
@@ -112,10 +127,10 @@ const log = (text, cls = "") => {
     const gameBox = $("gameBox"), bottom = $("bottomContainer"), mapWrap = document.querySelector(".map-wrap");
     if (gameBox && bottom && mapWrap &&!gameBox.contains(bottom)) gameBox.appendChild(bottom);
   };
-  return { $, clamp, rand, sprite, fmt, fmtIV, msg, modal, closeModal, showBattleSurface, log, ensureBoxStructure };
+  return { $, clamp, rand, sprite, fmt, fmtIV, pokemonName, msg, modal, closeModal, showBattleSurface, log, ensureBoxStructure };
 })();
 
-const { $, clamp, rand, sprite, fmt, fmtIV, msg, modal, closeModal, showBattleSurface, log } = PokeMisteryRL.Helpers;
+const { $, clamp, rand, sprite, fmt, fmtIV, pokemonName, msg, modal, closeModal, showBattleSurface, log } = PokeMisteryRL.Helpers;
 
 /* ============================================================
    RUNTIME CONDIVISO
@@ -189,7 +204,7 @@ PokeMisteryRL.Database = (() => {
       if (!data ||!data.id) return;
       flat[data.id] = {
         id: Number(data.id),
-        nome: data.nome || data.name || key,
+        nome: pokemonName(data.nome || data.name || key),
         immagine: sprite(data.immagine || data.image || (data.nome || "").toLowerCase() + ".png"),
         tipi: (data.tipi && data.tipi.length? data.tipi : data.types || []).map(t => String(t).toLowerCase()),
         stage: Number(data.stage || 1),
@@ -239,7 +254,7 @@ PokeMisteryRL.Database = (() => {
     const bst = (data.stats || []).reduce((sum, entry) => sum + (Number(entry?.base_stat) || 0), 0);
     PKM_DB[id] = {
       id,
-      nome: String(data.name || `Pokémon ${id}`),
+      nome: pokemonName(data.name || `Pokémon ${id}`),
       immagine: data?.sprites?.front_default || "",
       tipi: (data.types || []).sort((a,b) => a.slot - b.slot).map(entry => italianType[entry?.type?.name] || entry?.type?.name).filter(Boolean),
       apiMoves: Array.isArray(data.moves) ? data.moves : [],
@@ -264,7 +279,7 @@ PokeMisteryRL.Database = (() => {
     const bst = (data.stats || []).reduce((sum, entry) => sum + (Number(entry?.base_stat) || 0), 0);
     PKM_DB[id] = {
       ...current,
-      nome: current.nome || String(data.name || "Pokémon"),
+      nome: pokemonName(current.nome || data.name || "Pokémon"),
       immagine: data?.sprites?.front_default || current.immagine,
       tipi: (data.types || []).sort((a,b) => a.slot - b.slot).map(entry => italianType[entry?.type?.name] || entry?.type?.name).filter(Boolean),
       apiMoves: Array.isArray(data.moves) ? data.moves : current.apiMoves || [],
@@ -276,6 +291,7 @@ PokeMisteryRL.Database = (() => {
     // risposta live è disponibile, mantenendo invariata la percentuale HP.
     if(PKM_RUN && !PKM_RUN.battle){
       [PKM_RUN.activePokemon, PKM_RUN.secondActive, ...(PKM_RUN.teamSlots || [])].filter(member => Number(member?.id) === id).forEach(member => {
+        member.nome = PKM_DB[id].nome;
         member.baseStats = { ...PKM_DB[id].baseStats };
         PokeMisteryRL_LevelSystem?.rebuildBaseStats?.(member);
       });
@@ -480,6 +496,21 @@ PokeMisteryRL.Database = (() => {
 
   return { PKM_DB, buildPokemonDB, getPokemon, getPokemonId, loadPokeApiInitialDatabase, loadPokeApiLiveDatabase, loadPokeApiCompleteDatabase, getPokeApiItem, getPokeApiMove };
 })();
+
+// Anche una run già in corso può contenere anteprime o avversari creati prima
+// dell'arrivo del catalogo PokéAPI. Uniformiamo i soli record Pokémon (id
+// numerico), senza toccare i nomi degli oggetti nello zaino.
+const normalizeRunPokemonNames = () => {
+  if(!PKM_RUN) return;
+  const visited = new WeakSet();
+  const visit = value => {
+    if(!value || typeof value !== "object" || visited.has(value)) return;
+    visited.add(value);
+    if(typeof value.nome === "string" && Number.isFinite(Number(value.id))) value.nome = pokemonName(value.nome);
+    Object.values(value).forEach(visit);
+  };
+  visit(PKM_RUN);
+};
 
 const { PKM_DB, buildPokemonDB, getPokemon, getPokemonId } = PokeMisteryRL.Database;
 // #endregion
@@ -1464,15 +1495,19 @@ PokeMisteryRL.Map = (() => {
     const bottom = $("bottomPanel");
     const modes = window.PokeMisteryRL_Modes;
     const floor = modes?.getFloor?.(PKM_RUN?.mode, PKM_RUN?.floor);
-    // Tutti i nodi condividono lo scenario bosco, senza varianti per piano.
-    let background = "./img/prove-bosco/BoscoSmeraldo-Map-Orizzontale.png";
+    // Ogni piano ha un set completo coerente: mappa, scena e icona nodo.
+    const forest = String(floor?.categoria || "").toLowerCase() === "bosco";
+    let background = forest
+      ? "./img/prove-bosco/BoscoSmeraldo-Map-Orizzontale.png"
+      : "./img/prove-bosco/Grotta-Scenario-Orizzontale.png";
 
     // La modalità Test usa gli scenari Camp: il sorteggio viene salvato
     // nella run, quindi lo sfondo non cambia a ogni ridisegno della mappa.
     if(isTest2Mode()){
-      // Le due finestre della mappa (1/2/3 e 3/2/1) condividono lo stesso
-      // scenario roccioso, così il cambio rigenera solo i nodi.
-      background = "./img/prove-bosco/BoscoSmeraldo-Map-Orizzontale.png";
+      // Il fondale segue la categoria del piano, senza rigenerarsi a ogni redraw.
+      background = forest
+        ? "./img/prove-bosco/BoscoSmeraldo-Map-Orizzontale.png"
+        : "./img/prove-bosco/Grotta-Scenario-Orizzontale.png";
     }else if(false && isTestCampaign()){
       const currentFloor = Number(PKM_RUN.floor) || 1;
       const maxFloor = Math.max(1, Number(modes?.get?.(PKM_RUN?.mode)?.piani?.length) || 1);
@@ -1979,7 +2014,11 @@ PokeMisteryRL.Progress = (() => {
     armStartSelection("starter", choices.map(pokemon => Number(pokemon.id)));
     const bottom = $("bottomContainer");
     if(bottom){
-      bottom.innerHTML = `<section id="test2StarterPreview" class="test2-starter-preview" aria-label="Candidati starter"><span class="test2-starter-scene-label">SQUADRA</span><nav class="test2-utility-bar" aria-label="Comandi run"><span class="test2-utility-money">💰 <b>${Number(PKM_RUN?.bits) || 0}</b></span><button type="button" onclick="openHomeMenu()" aria-label="Menu">☰</button><button type="button" onclick="quickReset()" aria-label="Ricomincia">↻</button><button type="button" onclick="toggleInventory()" aria-label="Zaino">🎒</button></nav><div>${choices.map(pokemon => `<article><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b><em>${(pokemon.tipi || []).map(getTypingBadge).join("")}</em><i><small>HP</small><u></u></i></article>`).join("")}</div></section>`;
+      bottom.innerHTML = `<section id="test2StarterPreview" class="test2-starter-preview" aria-label="Candidati starter"><span class="test2-starter-scene-label">SQUADRA</span><nav class="test2-utility-bar" aria-label="Comandi run"><span class="test2-utility-money">💰 <b>${Number(PKM_RUN?.bits) || 0}</b></span><button type="button" onclick="openHomeMenu()" aria-label="Menu">☰</button><button type="button" onclick="quickReset()" aria-label="Ricomincia">↻</button><button type="button" onclick="toggleInventory()" aria-label="Zaino">🎒</button></nav><div>${choices.map(pokemon => `<article><span class="test2-starter-scene-top"><em>${(pokemon.tipi || []).map(getTypingBadge).join("")}</em><i><small>HP</small><u></u></i></span><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span class="test2-starter-scene-bottom"><b>${pokemon.nome}</b><small>LV 90</small></span></article>`).join("")}</div></section>`;
+      bottom.style.setProperty("background-image", 'linear-gradient(rgba(5,10,21,.08),rgba(1,4,12,.32)),url("./img/prove-bosco/Grotta-Scenario.png")', "important");
+      bottom.style.setProperty("background-size", "cover", "important");
+      bottom.style.setProperty("background-position", "center bottom", "important");
+      bottom.style.setProperty("background-repeat", "no-repeat", "important");
     }
     map.innerHTML = `<section class="test2-starter-choice-panel" aria-label="Scegli uno starter"><header><span>⭐ SCEGLI LO STARTER</span><small>Scegli uno dei cinque Pokémon della scena.</small></header><div>${choices.map(pokemon => `<button type="button" data-start-choice="starter" data-starter-id="${Number(pokemon.id)}" onclick="chooseCampaignStarter(${Number(pokemon.id)})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"></button>`).join("")}</div></section>`;
     return true;
@@ -3779,9 +3818,30 @@ PokeMisteryRL.Battle = (() => {
     );
   };
 
+  // Bersaglio Test2: il nemico punta sempre la colonna più a destra che
+  // contiene un alleato vivo. A parità di colonna, viene scelto il più avanti
+  // nella riga; il KO sposta subito la priorità alla colonna precedente.
+  const getTest2RightmostLivingTarget = (targets = getAliveStarters()) => {
+    const defaults = {0:3, 1:4, 2:5};
+    return [...targets]
+      .map(pokemon => {
+        const slot = getBattlePlayers().indexOf(pokemon);
+        const position = clamp(Number(PKM_RUN?.test2ScenePositions?.[slot] ?? defaults[slot] ?? 0), 0, 8);
+        return { pokemon, column: position % 3, row: Math.floor(position / 3) };
+      })
+      .sort((left, right) => right.column - left.column || right.row - left.row)[0]?.pokemon || null;
+  };
 
-  const isTeamDead = () =>
-    getAliveStarters().length === 0;
+
+  const isTeamDead = () => {
+    // In Test2 il Pokémon scelto come starter è il cuore della run: se va KO,
+    // la battaglia termina anche se i compagni sono ancora in piedi.
+    if(isTest2Mode()){
+      const starter = PKM_RUN?.pendingStarter || PKM_RUN?.teamSlots?.[0] || PKM_RUN?.activePokemon;
+      return !starter || Number(starter.hp) <= 0;
+    }
+    return getAliveStarters().length === 0;
+  };
 
 
   /*
@@ -4333,12 +4393,10 @@ PokeMisteryRL.Battle = (() => {
       }
 
 
-      // In Test il membro più a destra (ultimo nell'array) protegge il gruppo.
-      // Quando va KO, entra automaticamente il precedente.
-      // In Test2 ogni nemico sceglie casualmente un membro ancora vivo:
-      // nessun accanimento fisso sul fronte o su uno slot specifico.
+      // In Test2 il bersaglio segue la formazione: colonna destra, poi
+      // centrale, poi sinistra. Non c'è più alcuna scelta casuale.
       let target = isTest2Mode()
-        ? rand(targets)
+        ? getTest2RightmostLivingTarget(targets)
         : (isTestCampaign()
           ? targets[targets.length - 1]
           : (s2 && Number(s2.hp) > 0 ? s2 : (s1 && Number(s1.hp) > 0 ? s1 : null)));
@@ -5194,8 +5252,14 @@ PokeMisteryRL.UI = (() => {
 
   // Zaino Test: oggetti e formazione convivono nella stessa HUD e supportano il drag & drop.
   const testBackpackRoster = () => [PKM_RUN?.activePokemon, PKM_RUN?.secondActive, ...(PKM_RUN?.teamSlots || [])].filter(Boolean).slice(0,4);
+  const hasTest2SelectableNode = () => !!PKM_RUN?.map?.some(row => row?.some(node => node?.ok === true && !node?.done));
   const isTest2SafeIntermission = () => {
-    if(!isTest2Mode() || PKM_RUN?.battle || busy || PKM_RUN?.test2BackpackAvailable !== true) return false;
+    // `busy` è un timer di animazione e può restare valorizzato dopo un
+    // render. Non deve mai contraddire un pulsante già abilitato.
+    if(!isTest2Mode() || PKM_RUN?.battle || PKM_RUN?.test2BackpackAvailable !== true) return false;
+    // L'unica pausa sicura è la mappa che mostra davvero almeno un nodo
+    // scegliibile. Gli eventi azzerano sempre questi flag prima di aprirsi.
+    if(!hasTest2SelectableNode()) return false;
     // Protegge anche i frame di transizione in cui il fight è già presente
     // nel DOM ma PKM_RUN.battle è appena stato resettato.
     return !document.querySelector("#bottomContainer .test2-fight-bottom, #bottomContainer #battleFinal, #bottomContainer .bf-field");
@@ -5259,12 +5323,12 @@ PokeMisteryRL.UI = (() => {
   };
   const isTest2BackpackSession = () => {
     const map = $("map");
-    return !!(isTest2SafeIntermission() && PKM_RUN?.test2BackpackOpen && map?.classList.contains("test2-backpack-map"));
+    return !!(isTest2Mode() && PKM_RUN?.test2BackpackOpen && map?.classList.contains("test2-backpack-map"));
   };
-  const renderTest2BackpackMap = () => {
+  const renderTest2BackpackMap = (openedFromMap = false) => {
     const map = $("map");
     if(!map || !isTest2Mode()) return false;
-    if(!isTest2BackpackSession() && !canOpenTest2Backpack()){ msg("Lo zaino è disponibile tra un nodo e il successivo."); return false; }
+    if(!openedFromMap && !isTest2BackpackSession() && !canOpenTest2Backpack()){ msg("Apri lo Zaino dalla mappa."); return false; }
     const items = getRunInventory().map(formatInventoryEntry).filter(item => item && Number(item.qty) > 0);
     const tab = PKM_RUN.test2BackpackTab === "usable" ? "usable" : "equipment";
     const pocket = tab === "equipment" ? items.filter(isEquipableItem) : items.filter(item => isUsableItem(item) && !isEquipableItem(item));
@@ -5309,18 +5373,57 @@ PokeMisteryRL.UI = (() => {
     if(!map) return false;
     const action = isUsableItem(item) ? "USA SU" : "EQUIPAGGIA A";
     const key = String(item.id).replace(/'/g,"\\'");
+    const targetCards = team.map((pokemon,index) => {
+      const skill = PokeMisteryRL_SkillSystem?.getActiveSkill?.(pokemon) || pokemon.skills?.[0] || null;
+      const before = getEffectivePokemonStats(pokemon, skill);
+      const projected = isUsableItem(item)
+        ? before
+        : getEffectivePokemonStats({...pokemon, heldItems:[...getHeldItemsForPokemon(pokemon), {id:item.id}]}, skill);
+      const basePower = Math.round(Number(skill?.pwr ?? skill?.power) || 0);
+      const beforePower = Math.round(basePower * before.effects.movePowerMultiplier);
+      const projectedPower = Math.round(basePower * projected.effects.movePowerMultiplier);
+      const changes = [["ATK",before.atk,projected.atk],["SPA",before.satk,projected.satk],["DIF",before.dif,projected.dif],["SDF",before.sdef,projected.sdef]].filter(([,value,next]) => value !== next);
+      const impact = isUsableItem(item)
+        ? itemEffectLabel(item, pokemon, skill)
+        : projectedPower !== beforePower
+          ? `PWR ${beforePower} → ${projectedPower}`
+          : changes.length
+            ? changes.map(([label,value,next]) => `${label} ${value}→${next}`).join(" · ")
+            : item?.tipo === "potenziamento_tipo"
+              ? `Nessun bonus: mossa ${String(skill?.type || skill?.tipo || "").toUpperCase() || "attiva"}`
+              : itemEffectLabel(item, pokemon, skill);
+      return `<button type="button" class="test2-item-target-choice" data-backpack-target="${index}" title="${impact}" ondragover="PokeMisteryRL.UI.highlightTest2BackpackTarget(event)" ondragenter="PokeMisteryRL.UI.highlightTest2BackpackTarget(event)" ondragleave="PokeMisteryRL.UI.clearTest2BackpackTarget(event)" ondrop="PokeMisteryRL.UI.dropBackpackItemToScene(event,${index})" onclick="PokeMisteryRL.UI.applyTest2BackpackItem('${key}',${index})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b><small>LIV ${pokemon.level || 1}</small></button>`;
+    }).join("");
     map.className = "test2-backpack-map test2-backpack-info-map";
-    map.innerHTML = `<section class="test2-item-info-panel"><header><button type="button" class="test2-backpack-back" onclick="PokeMisteryRL.UI.openTestBackpack()">← ZAINO</button><span>${isUsableItem(item) ? "USABILE" : "EQUIPAGGIABILE"}</span></header><div class="test2-item-info-main"><div class="test2-item-info-icon" draggable="true" ondragstart="PokeMisteryRL.UI.dragBackpackItem(event,'${key}')" onpointerdown="PokeMisteryRL.UI.startTest2BackpackTouch(event,'${key}')" onpointermove="PokeMisteryRL.UI.moveTest2BackpackTouch(event)" onpointerup="PokeMisteryRL.UI.endTest2BackpackTouch(event)" onpointercancel="PokeMisteryRL.UI.endTest2BackpackTouch(event)">${item.image ? `<img src="${item.image}" alt="${item.name}">` : `<i>${item.icon}</i>`}</div><div><h2>${item.name}</h2><small>Disponibili · ×${item.qty}</small><p>${itemUsageHint(item)}</p></div></div><section class="test2-item-effect-card"><small>EFFETTO ATTIVO</small><b>${itemEffectLabel(item)}</b></section><section class="test2-item-targets">${team.map((pokemon,index) => `<button type="button" data-backpack-target="${index}" ondragover="PokeMisteryRL.UI.highlightTest2BackpackTarget(event)" ondragenter="PokeMisteryRL.UI.highlightTest2BackpackTarget(event)" ondragleave="PokeMisteryRL.UI.clearTest2BackpackTarget(event)" ondrop="PokeMisteryRL.UI.dropBackpackItemToScene(event,${index})" onclick="PokeMisteryRL.UI.applyTest2BackpackItem('${key}',${index})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>S${index + 1}</span><b>${pokemon.nome}</b><small>${isUsableItem(item) ? "USA" : "EQUIPAGGIA"}</small></button>`).join("")}</section></section>`;
+    map.innerHTML = `<section class="test2-item-info-v2"><header><button type="button" class="test2-backpack-back" onclick="PokeMisteryRL.UI.openTestBackpack()">← ZAINO</button><span>${isUsableItem(item) ? "USABILE" : "EQUIPAGGIABILE"}</span></header><section class="test2-item-v2-summary"><div class="test2-item-v2-icon" draggable="true" ondragstart="PokeMisteryRL.UI.dragBackpackItem(event,'${key}')" onpointerdown="PokeMisteryRL.UI.startTest2BackpackTouch(event,'${key}')" onpointermove="PokeMisteryRL.UI.moveTest2BackpackTouch(event)" onpointerup="PokeMisteryRL.UI.endTest2BackpackTouch(event)" onpointercancel="PokeMisteryRL.UI.endTest2BackpackTouch(event)">${item.image ? `<img src="${item.image}" alt="${item.name}">` : `<i>${item.icon}</i>`}</div><div><small>×${item.qty} DISPONIBILI</small><h2>${item.name}</h2><p>${item.description || itemUsageHint(item)}</p><b>${itemEffectLabel(item)}</b></div></section><section class="test2-item-v2-targets" aria-label="${action}"><header><b>${action}</b><small>scegli un Pokémon</small></header><div>${targetCards}</div></section></section>`;
     return true;
   };
   const openTestBackpack = () => {
-    if(isTest2Mode()) return renderTest2BackpackMap();
+    if(isTest2Mode()){
+      if(!isTest2BackpackSession() && !canOpenTest2Backpack()) return false;
+      // Segna l'apertura prima del render: la schermata non deve dipendere
+      // da un secondo controllo di stato tra click e costruzione del pannello.
+      PKM_RUN.test2BackpackOpen = true;
+      return renderTest2BackpackMap();
+    }
     const items = getRunInventory().map(formatInventoryEntry).filter(item => item && Number(item.qty) > 0);
     const team = testBackpackRoster();
     const equipable = items.filter(isEquipableItem);
     const usable = items.filter(item => isUsableItem(item) && !isEquipableItem(item));
     const renderPocket = (title, pocket, className) => `<section class="test-backpack-pocket ${className}"><h3>${title}</h3><div class="test-backpack-items">${pocket.length ? pocket.map(item => { const key = String(item.id).replace(/'/g,"\\'"); return `<div class="test-backpack-item" ${isEquipableItem(item) ? `draggable="true" ondragstart="PokeMisteryRL.UI.dragBackpackItem(event,'${key}')"` : ""} onpointerdown="PokeMisteryRL.UI.startBackpackItemHold(event,'${key}')" onpointerup="PokeMisteryRL.UI.cancelBackpackItemHold()" onpointerleave="PokeMisteryRL.UI.cancelBackpackItemHold()" onpointercancel="PokeMisteryRL.UI.cancelBackpackItemHold()">${item.image ? `<img src="${item.image}" alt="">` : `<i>${item.icon}</i>`}<b>${item.name}</b><em>×${item.qty}</em></div>`; }).join("") : `<small class="test-backpack-empty">Nessun oggetto</small>`}</div></section>`;
     modal(`<div class="center test-backpack-modal"><header><span>🎒 ZAINO</span><small>TIENI PREMUTO UN OGGETTO PER LA DESCRIZIONE</small></header><div class="test-backpack-content"><div class="test-backpack-pockets">${renderPocket("EQUIPAGGIABILI",equipable,"equipment")}${renderPocket("USABILI",usable,"usable")}</div><section class="test-backpack-team">${team.map((pokemon,index) => `<button type="button" class="test-backpack-target" onclick="PokeMisteryRL.UI.openTestBottomPokemon(${index})" ondragover="PokeMisteryRL.UI.allowBackpackDrop(event)" ondrop="PokeMisteryRL.UI.dropBackpackItem(event,${index})"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b><small>${getHeldItemsForPokemon(pokemon).length ? getHeldItemsForPokemon(pokemon).map(entry => entry.nome || entry.id).join(" · ") : "Apri tab"}</small></button>`).join("")}</section></div><button type="button" onclick="closeModal()">CHIUDI</button></div>`);
+  };
+  const openTestBackpackFromMap = () => {
+    const map = $("map");
+    if(!isTest2Mode() || !map?.classList.contains("test2-horizontal-map")) return false;
+    PKM_RUN.test2BackpackOpen = true;
+    return renderTest2BackpackMap(true);
+  };
+  const toggleTest2FormationFromMap = () => {
+    const map = $("map");
+    if(!isTest2Mode() || !map?.classList.contains("test2-horizontal-map")) return false;
+    PKM_RUN.test2FormationEditing = true;
+    return renderTest2FormationMap();
   };
   const dragBackpackItem = (event, itemId) => {
     event.dataTransfer?.setData("text/plain", itemId);
@@ -5385,8 +5488,9 @@ PokeMisteryRL.UI = (() => {
   let sceneBackpackTouchPointerId = null;
   let sceneBackpackTouchMoved = false;
   const clearSceneBackpackTargets = () => document.querySelectorAll("[data-scene-item-target].scene-item-drop-target").forEach(target => target.classList.remove("scene-item-drop-target"));
+  const sceneBackpackTargetAt = (x, y) => (document.elementsFromPoint?.(x, y) || [document.elementFromPoint(x, y)]).map(node => node?.closest?.("[data-scene-item-target]")).find(Boolean) || null;
   const updateSceneBackpackTarget = (x, y) => {
-    const target = document.elementFromPoint(x, y)?.closest?.("[data-scene-item-target]") || null;
+    const target = sceneBackpackTargetAt(x, y);
     clearSceneBackpackTargets();
     target?.classList.add("scene-item-drop-target");
     return target;
@@ -5401,31 +5505,47 @@ PokeMisteryRL.UI = (() => {
     if(event.pointerType === "mouse") return;
     sceneBackpackTouchItem = itemId;
     sceneBackpackTouchPointerId = event.pointerId;
-    sceneBackpackTouchMoved = false;
+    sceneBackpackTouchMoved = { x:event.clientX, y:event.clientY, dragging:false };
     event.currentTarget?.setPointerCapture?.(event.pointerId);
   };
   const moveSceneBackpackTouch = event => {
     if(!sceneBackpackTouchItem) return;
-    sceneBackpackTouchMoved = true;
+    const start = sceneBackpackTouchMoved;
+    if(!start?.dragging && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 8) return;
+    if(start) start.dragging = true;
     event.preventDefault();
     updateSceneBackpackTarget(event.clientX, event.clientY);
   };
-  const endSceneBackpackTouch = event => {
+  const finishSceneBackpackTouch = event => {
     if(!sceneBackpackTouchItem) return false;
     const itemId = sceneBackpackTouchItem;
     const target = updateSceneBackpackTarget(event.clientX, event.clientY);
+    const dragged = !!sceneBackpackTouchMoved?.dragging;
     sceneBackpackTouchItem = null;
     sceneBackpackTouchPointerId = null;
+    sceneBackpackTouchMoved = false;
     clearSceneBackpackTargets();
-    if(sceneBackpackTouchMoved && target){
+    if(dragged && target){
       event.preventDefault();
       return applyTest2BackpackItem(itemId, Number(target.dataset.sceneItemTarget));
     }
     return false;
   };
+  const endSceneBackpackTouch = event => finishSceneBackpackTouch(event);
   document.addEventListener("pointermove", event => {
     if(test2BackpackTouchItem && event.pointerId === test2BackpackTouchPointerId) updateTest2BackpackTarget(event.clientX, event.clientY);
-    if(sceneBackpackTouchItem && event.pointerId === sceneBackpackTouchPointerId) updateSceneBackpackTarget(event.clientX, event.clientY);
+    if(sceneBackpackTouchItem && event.pointerId === sceneBackpackTouchPointerId) moveSceneBackpackTouch(event);
+  }, { passive:false });
+  document.addEventListener("pointerup", event => {
+    if(sceneBackpackTouchItem && event.pointerId === sceneBackpackTouchPointerId) finishSceneBackpackTouch(event);
+  }, { passive:false });
+  document.addEventListener("pointercancel", event => {
+    if(sceneBackpackTouchItem && event.pointerId === sceneBackpackTouchPointerId){
+      sceneBackpackTouchItem = null;
+      sceneBackpackTouchPointerId = null;
+      sceneBackpackTouchMoved = false;
+      clearSceneBackpackTargets();
+    }
   }, { passive:true });
 
   const buildTestBottomTemplate = () => `
@@ -5508,25 +5628,17 @@ PokeMisteryRL.UI = (() => {
         <button type="button" onclick="openHomeMenu()" aria-label="Menu" title="Menu">☰</button>
         <button type="button" class="test2-reset" onclick="quickReset()" aria-label="Ricomincia" title="Ricomincia">↻</button>
         <button type="button" onclick="PokeMisteryRL.UI.toggleTest2SceneBuildingEditor()" aria-label="Modifica PNG scena" title="Sposta PNG nella scena">🏗</button>
-        <button type="button" onclick="PokeMisteryRL.UI.toggleTest2FormationEditor()" aria-label="Formazione" title="${canEditTest2Formation() ? "Modifica formazione" : "La formazione si modifica tra due nodi"}" ${canEditTest2Formation() ? "" : "disabled"}>◎</button>
-        <button type="button" onclick="toggleInventory()" aria-label="Zaino" title="${canOpenTest2Backpack() ? "Apri zaino" : "Lo zaino è disponibile tra due nodi"}" ${canOpenTest2Backpack() ? "" : "disabled"}>🎒</button>
       </div>
     </nav>
   `;
 
   const buildTest2FormationTemplate = () => {
     const scene = getTest2BottomScene();
-    // L'ordine dei box replica quello nello scenario: sinistra, alto, fronte.
-    const order = [
-      {pokemon:PKM_RUN?.teamSlots?.[0], slotIndex:2},
-      {pokemon:PKM_RUN?.activePokemon, slotIndex:0},
-      {pokemon:PKM_RUN?.secondActive, slotIndex:1}
-    ];
-    const selected = Number(PKM_RUN?.test2FormationPick);
+    const starter = PKM_RUN?.pendingStarter || PKM_RUN?.teamSlots?.[0] || PKM_RUN?.activePokemon;
     return `
-    <div id="bottomCampagna" class="bottom-campagna" data-scene="${scene}" aria-label="Formazione squadra">
-      <span class="bottom-campagna-title">SQUADRA</span>
-      <nav class="test2-formation-order" aria-label="Cambia ordine squadra"><small>SQUADRA</small>${order.map(({pokemon,slotIndex},index) => pokemon ? `<button type="button" class="formation-slot-s${index + 1} ${selected === slotIndex ? "selected" : ""}" draggable="true" ondragstart="PokeMisteryRL.UI.dragTest2FormationSlot(event,${slotIndex})" ondragover="PokeMisteryRL.UI.allowTest2FormationDrop(event)" ondrop="PokeMisteryRL.UI.dropTest2FormationSlot(event,${slotIndex})" onclick="PokeMisteryRL.UI.selectTest2FormationSlot(${slotIndex})" title="${pokemon.nome} · LV ${pokemon.level || 1}: trascina o clicca per cambiare posizione"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>S${index + 1}</span><em>LV ${pokemon.level || 1}</em></button>` : "").join("")}</nav>
+    <div id="bottomCampagna" class="bottom-campagna" data-scene="${scene}" aria-label="Starter">
+      <span class="bottom-campagna-title">STARTER</span>
+      <nav class="test2-formation-order test2-starter-order" aria-label="Starter scelto"><small>STARTER</small>${starter ? `<button type="button" class="formation-slot-s1" onclick="PokeMisteryRL.UI.openTestBottomPokemon(2)" title="${starter.nome} · LV ${starter.level || 1}"><img src="${sprite(starter.immagine)}" alt="${starter.nome}"><span>${starter.nome}</span><em>LV ${starter.level || 1}</em></button>` : ""}</nav>
       <div id="test2FormationLine" class="bottom-campagna-formation"></div>
       ${buildTest2UtilityBar()}
     </div>
@@ -5694,6 +5806,20 @@ PokeMisteryRL.UI = (() => {
         // sfidanti o indicatori VS ereditati dalla scena precedente.
         test2Bottom.querySelectorAll('.test2-enemy-formation,.test2-enemy-sprite,.test2-dojo-challenger,.test2-dojo-reward-opponent,.test2-shop-kecleon,.test2-kecleon-bubble,.test2-fight-versus,.test2-shelter-chansey').forEach(entry => entry.remove());
         test2Bottom.dataset.scene = test2Scene;
+        const floor = window.PokeMisteryRL_Modes?.getFloor?.(PKM_RUN.mode, PKM_RUN.floor);
+        const forest = String(floor?.categoria || "").toLowerCase() === "bosco";
+        const scene = forest
+          ? "./img/prove-bosco/BoscoSmeraldo-Scenario.png"
+          : "./img/prove-bosco/Grotta-Scenario.png";
+        const sceneBackground = `linear-gradient(rgba(5,10,21,.08),rgba(1,4,12,.32)),url("${scene}")`;
+        $("bottomContainer")?.style.setProperty("background-image", sceneBackground, "important");
+        $("bottomContainer")?.style.setProperty("background-size", "cover", "important");
+        $("bottomContainer")?.style.setProperty("background-position", "center bottom", "important");
+        $("bottomContainer")?.style.setProperty("background-repeat", "no-repeat", "important");
+        test2Bottom.style.setProperty("background-image", sceneBackground, "important");
+        test2Bottom.style.setProperty("background-size", "cover", "important");
+        test2Bottom.style.setProperty("background-position", "center bottom", "important");
+        test2Bottom.style.setProperty("background-repeat", "no-repeat", "important");
         // Kecleon compare soltanto durante l'evento negozio, mai come
         // mini-sprite permanente nello scenario.
         test2Bottom.querySelector('.test2-kecleon')?.remove();
@@ -5724,20 +5850,13 @@ PokeMisteryRL.UI = (() => {
       // Prima della scelta iniziale la scena deve essere completamente vuota:
       // nessuno sprite o slot della squadra anticipa lo starter disponibile.
       if(!PKM_RUN.starterChosen){
-        if(formationOrder) formationOrder.innerHTML = '<small>SQUADRA</small>';
+        if(formationOrder) formationOrder.innerHTML = '<small>STARTER</small>';
         if(formation) formation.innerHTML = '';
         return;
       }
       if(formationOrder){
-        const order = PKM_RUN.pendingStarter ? [
-          {pokemon:PKM_RUN.teamSlots?.[0], slotIndex:2}
-        ] : [
-          {pokemon:PKM_RUN.teamSlots?.[0], slotIndex:2},
-          {pokemon:PKM_RUN.activePokemon, slotIndex:0},
-          {pokemon:PKM_RUN.secondActive, slotIndex:1}
-        ];
-        const selected = Number(PKM_RUN.test2FormationPick);
-        formationOrder.innerHTML = `<small>SQUADRA</small>${order.map(({pokemon,slotIndex},index) => pokemon ? `<button type="button" class="formation-slot-s${index + 1} ${selected === slotIndex ? "selected" : ""}" draggable="true" ondragstart="PokeMisteryRL.UI.dragTest2FormationSlot(event,${slotIndex})" ondragover="PokeMisteryRL.UI.allowTest2FormationDrop(event)" ondrop="PokeMisteryRL.UI.dropTest2FormationSlot(event,${slotIndex})" onclick="PokeMisteryRL.UI.selectTest2FormationSlot(${slotIndex})" title="${pokemon.nome} · LV ${pokemon.level || 1}: trascina o clicca per cambiare posizione"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><span>S${index + 1}</span><em>LV ${pokemon.level || 1}</em></button>` : "").join("")}`;
+        const starter = PKM_RUN.pendingStarter || PKM_RUN.teamSlots?.[0] || PKM_RUN.activePokemon;
+        formationOrder.innerHTML = `<small>STARTER</small>${starter ? `<button type="button" class="formation-slot-s1" onclick="PokeMisteryRL.UI.openTestBottomPokemon(2)" title="${starter.nome} · LV ${starter.level || 1}"><img src="${sprite(starter.immagine)}" alt="${starter.nome}"><span>${starter.nome}</span><em>LV ${starter.level || 1}</em></button>` : ""}`;
       }
       const slots = PKM_RUN.teamSlots || [];
       const roster = PKM_RUN.pendingStarter ? [
@@ -5751,6 +5870,12 @@ PokeMisteryRL.UI = (() => {
       ];
       if(formation){
         const defaultPositions = {0:3, 1:4, 2:5};
+        // Ripristina le coordinate che erano state alterate dalla prova del
+        // layout 3+2, senza modificare gli spostamenti successivi dell'utente.
+        if(PKM_RUN.test2SceneLayoutVersion === "three-two-v1"){
+          PKM_RUN.test2ScenePositions = {...defaultPositions};
+          delete PKM_RUN.test2SceneLayoutVersion;
+        }
         PKM_RUN.test2ScenePositions ||= {...defaultPositions};
         const positionFor = slotIndex => clamp(Number(PKM_RUN.test2ScenePositions?.[slotIndex] ?? defaultPositions[slotIndex] ?? 4), 0, 8);
         formation.innerHTML = roster.map(({pokemon, slotIndex, label}, index) => {
@@ -5758,8 +5883,10 @@ PokeMisteryRL.UI = (() => {
           const maxHp = Math.max(1, Number(pokemon.maxHp) || 1);
           const hp = clamp(Number(pokemon.hp) || 0, 0, maxHp);
           const hpPercent = Math.round(hp / maxHp * 100);
-          const isSceneMember = index === 0 || index >= 2;
-          return `<button type="button" class="bottom-campagna-member member-${index} test2-position-${positionFor(slotIndex)} ${isSceneMember ? 'starter' : 'ally'} ${hp <= 0 ? 'dead' : ''}" ${isSceneMember ? `data-scene-item-target="${slotIndex}" ondragenter="PokeMisteryRL.UI.highlightSceneBackpackTarget(event)" ondragleave="PokeMisteryRL.UI.clearSceneBackpackTarget(event)"` : ""} onclick="PokeMisteryRL.UI.openTestBottomPokemon(${slotIndex})" title="${pokemon.nome}">
+          const itemTargetIndex = testBackpackRoster().findIndex(entry => entry === pokemon);
+          // Ogni Pokémon nel box scena è una destinazione valida per un oggetto.
+          const isSceneMember = itemTargetIndex >= 0;
+          return `<button type="button" class="bottom-campagna-member member-${index} test2-position-${positionFor(slotIndex)} ${isSceneMember ? 'starter' : 'ally'} ${hp <= 0 ? 'dead' : ''}" ${isSceneMember ? `data-scene-item-target="${itemTargetIndex}" ondragenter="PokeMisteryRL.UI.highlightSceneBackpackTarget(event)" ondragleave="PokeMisteryRL.UI.clearSceneBackpackTarget(event)"` : ""} onclick="PokeMisteryRL.UI.openTestBottomPokemon(${itemTargetIndex >= 0 ? itemTargetIndex : slotIndex})" title="${pokemon.nome}">
             <img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}">
             <span class="test2-scene-info"><b class="test2-scene-name">${pokemon.nome}</b><em class="test2-scene-level">LV ${pokemon.level || 1}</em><small class="test2-scene-move-level">MOSSA LV ${pokemon.sk || pokemon.skills?.[0]?.skillLevel || 1}</small><span class="bottom-campagna-types test2-scene-types" aria-label="Tipi di ${pokemon.nome}">${bottomTypeBadges(pokemon)}</span><i class="bottom-campagna-hp test2-scene-hp"><b style="width:${hpPercent}%"></b></i></span>
             <span class="sr-only">${label} · ${pokemon.nome} · ${hpPercent}% vita</span>
@@ -6382,6 +6509,8 @@ PokeMisteryRL.UI = (() => {
       return;
     }
 
+    normalizeRunPokemonNames();
+
     // Le scelte iniziali costruiscono già la loro scena e il loro box mappa.
     // Un render globale (per esempio al termine del caricamento dati) non deve
     // sostituirli per un frame con la mappa normale: era il flash visibile.
@@ -6411,7 +6540,8 @@ PokeMisteryRL.UI = (() => {
     map.classList.remove("test2-formation-map", "test2-backpack-map");
     delete map.dataset.test2BackpackOpen;
     map.classList.toggle("test2-horizontal-map", isTest2Mode());
-    if(isTest2Mode()){
+    const test2InitialTeamReady = isTest2Mode() && PKM_RUN?.starterChosen && !PKM_RUN?.startSelection && !!PKM_RUN?.activePokemon && !!PKM_RUN?.secondActive && !!PKM_RUN?.teamSlots?.[0];
+    if(test2InitialTeamReady){
       map.style.removeProperty("--test2-map-shift");
       map.dataset.test2Phase = String(Number(PKM_RUN.test2MapPhase) || 0);
     } else {
@@ -6629,6 +6759,25 @@ PokeMisteryRL.UI = (() => {
       map.appendChild(rowEl);
 
     });
+
+    if(isTest2Mode()){
+      const formationButton = document.createElement("button");
+      formationButton.type = "button";
+      formationButton.className = "test2-map-tool test2-map-formation";
+      formationButton.setAttribute("aria-label", "Formazione");
+      formationButton.title = "Formazione";
+      formationButton.textContent = "◎";
+      formationButton.onclick = () => PokeMisteryRL.UI.toggleTest2FormationFromMap();
+      map.appendChild(formationButton);
+      const backpackButton = document.createElement("button");
+      backpackButton.type = "button";
+      backpackButton.className = "test2-map-tool test2-map-backpack";
+      backpackButton.setAttribute("aria-label", "Zaino");
+      backpackButton.title = "Apri zaino";
+      backpackButton.textContent = "🎒";
+      backpackButton.onclick = () => PokeMisteryRL.UI.openTestBackpackFromMap();
+      map.appendChild(backpackButton);
+    }
 
 
     if (!mapResizeObserver) {
@@ -7492,11 +7641,29 @@ PokeMisteryRL.UI = (() => {
       const image = item?.immagine || raw?.immagine;
       const name = item?.nome || raw?.nome || raw?.name || raw?.id || "Oggetto";
       const effect = itemEffectLabel(item, pokemon, skill);
-      return `<article class="test2-member-item">${image ? `<img src="${image}" alt="">` : `<i>${raw?.icon || item?.icon || "◈"}</i>`}<div><b>${name}</b><small>${effect}</small></div><button type="button" onclick="removeTestHeldItem('${id}',${index})" aria-label="Rimuovi ${name}">×</button></article>`;
+      const itemId = String(item?.id || raw?.id || "").toLowerCase();
+      const matchesMoveType = item?.tipo !== "potenziamento_tipo" || normalizeItemType(item?.tipo_mossa) === activeType;
+      const state = itemId === "evolcondensa"
+        ? (effects.evioliteActive ? "ATTIVO · DIF +50%" : "INATTIVO · nessuna evoluzione")
+        : itemId === "vulneropolizza"
+          ? (effects.weaknessActive > 1 ? "ATTIVO · OFFESA ×2" : "IN ATTESA · dopo superefficace")
+          : item?.tipo === "potenziamento_tipo"
+            ? (matchesMoveType ? `ATTIVO · PWR +${Math.round((Number(item?.bonus_danno) || 0) * 100)}%` : `IN ATTESA · mossa ${String(item?.tipo_mossa || "").toUpperCase()}`)
+            : itemId === "assorbisfera" ? "ATTIVO · PWR +30%" : "EFFETTO PASSIVO";
+      return `<article class="test2-member-item ${state.startsWith("ATTIVO") ? "is-active" : ""}">${image ? `<img src="${image}" alt="">` : `<i>${raw?.icon || item?.icon || "◈"}</i>`}<div><b>${name}</b><small>${effect}</small><em>${state}</em></div><button type="button" onclick="removeTestHeldItem('${id}',${index})" aria-label="Rimuovi ${name}">×</button></article>`;
     }).join("") : `<p class="test2-member-empty">Nessun oggetto equipaggiato.</p>`;
     const basePower = Math.round(Number(skill?.pwr ?? skill?.power) || 0);
     const finalPower = Math.round(basePower * effects.movePowerMultiplier);
-    modal(`<section class="center test2-member-info"><header><div class="test2-member-portrait"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"></div><div><span>MEMBRO SQUADRA</span><h2>${pokemon.nome}</h2><p>${(pokemon.tipi || []).map(getTypingBadge).join("")} · LIV ${pokemon.level || 1}</p></div><button type="button" onclick="closeModal()" aria-label="Chiudi">×</button></header><div class="test2-member-hp"><b style="width:${Math.round(currentHp / maxHp * 100)}%"></b><span>${currentHp} / ${maxHp} HP</span></div><section class="test2-member-stats">${statTiles}</section><section class="test2-member-move"><small>MOSSA ${moveCategory}</small><b>${getTypingBadge(activeType)} ${skill?.nome || skill?.name || "Nessuna mossa"}</b><em>${finalPower !== basePower ? `PWR <s>${basePower}</s> → ${finalPower}` : `PWR ${finalPower}`}</em></section><section class="test2-member-equipment"><header><b>EQUIPAGGIAMENTO ATTIVO</b><small>${held.length}/3</small></header>${equipment}</section><footer><button type="button" onclick="PokeMisteryRL.UI.openTestBackpack()">APRI ZAINO</button><button type="button" class="member-info-close" onclick="closeModal()">CHIUDI</button></footer></section>`);
+    const moveStatus = effects.movePowerMultiplier !== 1
+      ? `PWR ${basePower} → ${finalPower} · BONUS +${Math.round((effects.movePowerMultiplier - 1) * 100)}%`
+      : `PWR ${finalPower} · NESSUN BONUS DANNO`;
+    const activeEffects = [
+      effects.lifeOrbActive ? "Sfera Vita" : "",
+      effects.typePowerBonus > 0 ? `Tipo ${activeType.toUpperCase()} +${Math.round(effects.typePowerBonus * 100)}%` : "",
+      effects.evioliteActive ? "DIF/DIF.SP +50%" : "",
+      effects.weaknessActive > 1 ? "Offesa ×2" : ""
+    ].filter(Boolean);
+    modal(`<section class="center test2-member-info"><header><div class="test2-member-portrait"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"></div><div><span>SCHEDA POKÉMON</span><h2>${pokemon.nome}</h2><p>${(pokemon.tipi || []).map(getTypingBadge).join("")} · LIV ${pokemon.level || 1}</p></div><button type="button" onclick="closeModal()" aria-label="Chiudi">×</button></header><div class="test2-member-hp"><b style="width:${Math.round(currentHp / maxHp * 100)}%"></b><span>${currentHp} / ${maxHp} HP</span></div><section class="test2-member-stats">${statTiles}</section><section class="test2-member-move"><header><small>MOSSA ${moveCategory}</small><em>${moveStatus}</em></header><b>${getTypingBadge(activeType)} ${skill?.nome || skill?.name || "Nessuna mossa"}</b><p>${activeEffects.length ? activeEffects.map(effect => `<span>${effect}</span>`).join("") : "Nessun modificatore da equipaggiamento"}</p></section><section class="test2-member-equipment"><header><b>OGGETTI EQUIPAGGIATI</b><small>${held.length}/3</small></header>${equipment}</section><footer><button type="button" onclick="PokeMisteryRL.UI.openTestBackpack()">APRI ZAINO</button><button type="button" class="member-info-close" onclick="closeModal()">CHIUDI</button></footer></section>`);
   };
   window.removeTestHeldItem = (itemId, index) => {
     const pokemon = testBottomSlots()[Number(index)];
@@ -7551,7 +7718,8 @@ PokeMisteryRL.UI = (() => {
     const slots = testBottomSlots();
     const positionFor = index => clamp(Number(PKM_RUN.test2ScenePositions[index] ?? defaults[index] ?? 4), 0, 8);
     map.className = "test2-formation-map";
-    map.innerHTML = `<section class="test2-formation-editor"><header><span>FORMAZIONE</span><small>Trascina un Pokémon in uno dei nove box.</small><button type="button" onclick="PokeMisteryRL.UI.toggleTest2FormationEditor()" aria-label="Chiudi">×</button></header><div class="test2-formation-grid">${Array.from({length:9}, (_, position) => { const owner = slots.findIndex((pokemon, index) => pokemon && positionFor(index) === position); const pokemon = owner >= 0 ? slots[owner] : null; return `<div class="test2-formation-cell ${pokemon ? 'occupied' : ''}" ondragover="PokeMisteryRL.UI.allowTestBottomDrop(event)" ondrop="PokeMisteryRL.UI.dropTest2Placement(event,${position})">${pokemon ? `<button type="button" draggable="true" ondragstart="PokeMisteryRL.UI.dragTestBottomPokemon(event,${owner})" title="${pokemon.nome}"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b></button>` : `<i>+</i>`}</div>`; }).join('')}</div></section>`;
+    const selected = Number(PKM_RUN.test2FormationEditorPick);
+    map.innerHTML = `<section class="test2-formation-editor"><header><span>FORMAZIONE</span><small>Trascina un Pokémon nel box desiderato.</small><button type="button" onclick="PokeMisteryRL.UI.toggleTest2FormationEditor()" aria-label="Chiudi">×</button></header><div class="test2-formation-grid">${Array.from({length:9}, (_, position) => { const owner = slots.findIndex((pokemon, index) => pokemon && positionFor(index) === position); const pokemon = owner >= 0 ? slots[owner] : null; return `<div class="test2-formation-cell ${pokemon ? 'occupied' : ''}" data-formation-position="${position}" onclick="PokeMisteryRL.UI.placeTest2FormationSlot(${position})" ondragover="PokeMisteryRL.UI.allowTestBottomDrop(event)" ondrop="PokeMisteryRL.UI.dropTest2Placement(event,${position})">${pokemon ? `<button type="button" class="${selected === owner ? 'selected' : ''}" draggable="true" ondragstart="PokeMisteryRL.UI.dragTestBottomPokemon(event,${owner})" onpointerdown="PokeMisteryRL.UI.startTest2FormationTouch(event,${owner})" onpointermove="PokeMisteryRL.UI.moveTest2FormationTouch(event)" onpointerup="PokeMisteryRL.UI.endTest2FormationTouch(event)" onpointercancel="PokeMisteryRL.UI.cancelTest2FormationTouch(event)" onclick="event.stopPropagation();PokeMisteryRL.UI.selectTest2FormationPlacementSlot(${owner})" title="${pokemon.nome}"><img src="${sprite(pokemon.immagine)}" alt="${pokemon.nome}"><b>${pokemon.nome}</b></button>` : `<i>+</i>`}</div>`; }).join('')}</div></section>`;
     return true;
   };
   const toggleTest2FormationEditor = () => {
@@ -7638,7 +7806,7 @@ PokeMisteryRL.UI = (() => {
     if(!PKM_RUN?.test2SceneBuildingEditing) return false;
     const buildingElement = event.currentTarget?.closest(".test2-scene-building");
     const scene = buildingElement?.dataset?.sceneBuilding;
-    const surface = $("bottomCampagna");
+    const surface = buildingElement?.closest("#bottomCampagna");
     const current = getTest2SceneBuilding(scene);
     if(!buildingElement || !surface || !current) return false;
     event.preventDefault();
@@ -7678,10 +7846,9 @@ PokeMisteryRL.UI = (() => {
     renderTest2SceneBuilding();
     return PKM_RUN.test2SceneBuildingLayout[scene].flip;
   };
-  const dropTest2Placement = (event, position) => {
-    event.preventDefault();
+  const placeTest2FormationFromSource = (source, position) => {
     if(!PKM_RUN?.test2FormationEditing || PKM_RUN.battle || !canEditTest2Formation()) return false;
-    const source = Number(event.dataTransfer?.getData("text/plain"));
+    source = Number(source);
     const slots = testBottomSlots();
     if(!Number.isInteger(source) || !slots[source]) return false;
     const defaults = {0:3, 1:4, 2:5};
@@ -7694,6 +7861,79 @@ PokeMisteryRL.UI = (() => {
     refreshBottomPanel();
     renderTest2FormationMap();
     return true;
+  };
+  const dropTest2Placement = (event, position) => {
+    event.preventDefault();
+    return placeTest2FormationFromSource(event.dataTransfer?.getData("text/plain"), position);
+  };
+  let test2FormationTouch = null;
+  const formationCellAt = (x, y) => (document.elementsFromPoint?.(x, y) || [document.elementFromPoint(x, y)]).map(node => node?.closest?.("[data-formation-position]")).find(Boolean) || null;
+  const clearTest2FormationTouchTarget = () => document.querySelectorAll("[data-formation-position].test2-formation-drop-target").forEach(cell => cell.classList.remove("test2-formation-drop-target"));
+  const updateTest2FormationTouchTarget = (x, y) => {
+    const cell = formationCellAt(x, y);
+    clearTest2FormationTouchTarget();
+    cell?.classList.add("test2-formation-drop-target");
+    return cell;
+  };
+  const startTest2FormationTouch = (event, source) => {
+    if(event.pointerType === "mouse" || !PKM_RUN?.test2FormationEditing) return;
+    test2FormationTouch = {source:Number(source), pointerId:event.pointerId, x:event.clientX, y:event.clientY, dragging:false};
+    event.currentTarget?.setPointerCapture?.(event.pointerId);
+  };
+  const moveTest2FormationTouch = event => {
+    const drag = test2FormationTouch;
+    if(!drag || drag.pointerId !== event.pointerId) return;
+    if(!drag.dragging && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 8) return;
+    drag.dragging = true;
+    event.preventDefault();
+    updateTest2FormationTouchTarget(event.clientX, event.clientY);
+  };
+  const finishTest2FormationTouch = event => {
+    const drag = test2FormationTouch;
+    if(!drag || drag.pointerId !== event.pointerId) return false;
+    const target = updateTest2FormationTouchTarget(event.clientX, event.clientY);
+    test2FormationTouch = null;
+    clearTest2FormationTouchTarget();
+    if(drag.dragging && target){
+      event.preventDefault();
+      return placeTest2FormationFromSource(drag.source, Number(target.dataset.formationPosition));
+    }
+    return false;
+  };
+  const endTest2FormationTouch = event => finishTest2FormationTouch(event);
+  const cancelTest2FormationTouch = event => {
+    if(test2FormationTouch?.pointerId !== event.pointerId) return;
+    test2FormationTouch = null;
+    clearTest2FormationTouchTarget();
+  };
+  document.addEventListener("pointermove", event => { if(test2FormationTouch?.pointerId === event.pointerId) moveTest2FormationTouch(event); }, {passive:false});
+  document.addEventListener("pointerup", event => { if(test2FormationTouch?.pointerId === event.pointerId) finishTest2FormationTouch(event); }, {passive:false});
+  document.addEventListener("pointercancel", event => { if(test2FormationTouch?.pointerId === event.pointerId) cancelTest2FormationTouch(event); }, {passive:true});
+  // Il drag HTML non è affidabile sui browser touch: questa coppia di
+  // funzioni offre lo stesso spostamento con due tocchi (Pokémon → box).
+  const selectTest2FormationPlacementSlot = index => {
+    const source = Number(index);
+    if(!PKM_RUN?.test2FormationEditing || !testBottomSlots()[source]) return false;
+    PKM_RUN.test2FormationEditorPick = source;
+    return renderTest2FormationMap();
+  };
+  const placeTest2FormationSlot = position => {
+    const source = Number(PKM_RUN?.test2FormationEditorPick);
+    if(!Number.isInteger(source)) return false;
+    const slots = testBottomSlots();
+    if(!slots[source]) return false;
+    const defaults = {0:3, 1:4, 2:5};
+    PKM_RUN.test2ScenePositions ||= {...defaults};
+    const target = clamp(Number(position) || 0, 0, 8);
+    const current = clamp(Number(PKM_RUN.test2ScenePositions[source] ?? defaults[source] ?? 4), 0, 8);
+    const occupant = slots.findIndex((pokemon, index) => pokemon && index !== source && clamp(Number(PKM_RUN.test2ScenePositions[index] ?? defaults[index] ?? 4), 0, 8) === target);
+    if(current !== target){
+      PKM_RUN.test2ScenePositions[source] = target;
+      if(occupant >= 0) PKM_RUN.test2ScenePositions[occupant] = current;
+    }
+    delete PKM_RUN.test2FormationEditorPick;
+    refreshBottomPanel();
+    return renderTest2FormationMap();
   };
   const dropTestBottomPokemon = (event, targetIndex) => {
     event.preventDefault();
@@ -7794,6 +8034,8 @@ PokeMisteryRL.UI = (() => {
     changeInventoryPage,
 
     openTestBackpack,
+    openTestBackpackFromMap,
+    toggleTest2FormationFromMap,
     closeTest2Backpack,
     setTest2BackpackTab,
     openTest2BackpackItemInfo,
@@ -7832,6 +8074,12 @@ PokeMisteryRL.UI = (() => {
     flipTest2SceneBuilding,
     toggleTest2FormationEditor,
     dropTest2Placement,
+    startTest2FormationTouch,
+    moveTest2FormationTouch,
+    endTest2FormationTouch,
+    cancelTest2FormationTouch,
+    selectTest2FormationPlacementSlot,
+    placeTest2FormationSlot,
     dropTestBottomPokemon
 
   };

@@ -9546,10 +9546,10 @@ img[src*="spritemon/"]{width:100px!important;height:100px!important;object-fit:c
 .adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel{display:grid!important;place-items:center!important;width:100%!important;height:100%!important;margin:0!important;padding:14px!important;border:0!important;border-radius:0!important;background:transparent!important}.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel>div{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;grid-template-rows:1fr!important;align-items:center!important;gap:9px!important;width:100%!important;height:100%!important}.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel>div>button,.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel>div>button:nth-child(4){display:grid!important;grid-column:auto!important;grid-template-rows:1fr!important;place-items:center!important;width:100%!important;height:100%!important;min-height:0!important;padding:5px!important;border:1px solid rgba(107,218,247,.8)!important;border-radius:12px!important;background:linear-gradient(145deg,rgba(7,39,61,.94),rgba(3,18,33,.96))!important}.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel>div>button img{width:min(100%,70px)!important;height:min(100%,70px)!important;max-width:none!important;max-height:none!important;object-fit:contain!important}.test2-starter-preview{position:relative;display:grid;grid-template-rows:17px minmax(0,1fr);gap:5px;width:100%;height:100%;padding:8px 12px;border:1px solid rgba(112,220,247,.56);border-radius:14px;background:linear-gradient(145deg,rgba(4,29,47,.94),rgba(3,15,29,.97));text-align:center}.test2-starter-preview>span{color:#ffe477;font:900 8px monospace;letter-spacing:1px}.test2-starter-preview>div{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;gap:6px;min-width:0}.test2-starter-preview article{display:grid;grid-template-rows:50px 11px 15px 9px;justify-items:center;align-content:center;gap:2px;min-width:0;padding:3px;border:1px solid rgba(107,213,244,.42);border-radius:9px;background:rgba(6,34,53,.72)}.test2-starter-preview img{width:48px;height:48px;object-fit:contain;image-rendering:pixelated}.test2-starter-preview b{max-width:100%;overflow:hidden;color:#fff2c5;font:900 7px monospace;text-overflow:ellipsis;white-space:nowrap}.test2-starter-preview em{display:flex;justify-content:center;min-height:14px;font-style:normal;transform:scale(.78);transform-origin:center}.test2-starter-preview i{display:grid;grid-template-columns:12px 1fr;align-items:center;gap:2px;width:100%;font-style:normal}.test2-starter-preview i small{color:#a6deed;font:800 5px monospace}.test2-starter-preview i u{display:block;height:4px;border:1px solid rgba(154,239,214,.6);border-radius:4px;background:linear-gradient(90deg,#1bcf91,#71f3d3);text-decoration:none}
 @media(max-width:520px){.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel{padding:8px!important}.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel>div{gap:5px!important}.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel>div>button{padding:3px!important}.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel>div>button img{width:min(100%,46px)!important;height:min(100%,46px)!important}.test2-starter-preview{padding:6px 7px}.test2-starter-preview article{grid-template-rows:38px 9px 12px 7px;padding:2px}.test2-starter-preview img{width:36px;height:36px}.test2-starter-preview b{font-size:6px}.test2-starter-preview i u{height:3px}}
 /* Box scena della scelta starter: una sola riga, senza ereditare il vecchio HUD. */
-.adventure-shell.test2-layout>#bottomContainer:has(#test2StarterPreview){display:block!important;position:relative!important;order:0!important;width:100%!important;height:64dvh!important;min-height:64dvh!important;max-height:64dvh!important;margin:0!important;padding:0!important;overflow:hidden!important;border:1px solid rgba(112,216,255,.52)!important;border-radius:14px!important;background:linear-gradient(rgba(3,14,27,.08),rgba(3,14,27,.3)),url("./img/prove-bosco/BoscoSmeraldo-Scenario.png") center/cover!important;box-shadow:0 5px 18px rgba(0,0,0,.5)!important}.test2-starter-preview{position:absolute!important;inset:0!important;display:grid!important;grid-template-rows:18px 20px minmax(0,1fr)!important;gap:4px!important;width:auto!important;height:auto!important;padding:10px 8%!important;border:0!important;border-radius:0!important;background:transparent!important}.test2-starter-scene-label{justify-self:start;align-self:start;padding:4px 8px;border:1px solid rgba(103,218,245,.58);border-radius:8px;background:rgba(3,26,43,.82);color:#b8efff;font:900 7px monospace}.test2-starter-heading{justify-self:center;color:#ffe477;font:900 8px monospace;letter-spacing:1px}.test2-starter-preview>.test2-utility-bar{position:absolute!important;top:8px!important;right:9px!important;z-index:3!important}.test2-starter-preview>div{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;align-items:center!important;gap:10px!important;width:100%!important;min-width:0!important}.test2-starter-preview article{display:grid!important;grid-template-rows:72px 13px 16px 10px!important;justify-items:center!important;align-content:center!important;gap:3px!important;min-width:0!important;padding:5px!important;border:0!important;border-radius:0!important;background:transparent!important}.test2-starter-preview img{width:68px!important;height:68px!important;filter:drop-shadow(0 5px 4px rgba(0,0,0,.72))!important}.test2-starter-preview b{font-size:8px!important;text-shadow:0 1px 3px #000}.test2-starter-preview em{transform:scale(.9)!important}.test2-starter-preview i{grid-template-columns:15px 1fr!important}.test2-starter-preview i small{font-size:6px!important;text-shadow:0 1px 2px #000}.test2-starter-preview i u{height:5px!important}
+.adventure-shell.test2-layout>#bottomContainer:has(#test2StarterPreview){display:block!important;position:relative!important;order:0!important;width:100%!important;height:64dvh!important;min-height:64dvh!important;max-height:64dvh!important;margin:0!important;padding:0!important;overflow:hidden!important;border:1px solid rgba(112,216,255,.52)!important;border-radius:14px!important;background:linear-gradient(rgba(3,14,27,.08),rgba(3,14,27,.3)),url("./img/prove-bosco/Grotta-Scenario-v2.png") center/cover!important;box-shadow:0 5px 18px rgba(0,0,0,.5)!important}.test2-starter-preview{position:absolute!important;inset:0!important;display:grid!important;grid-template-rows:18px 20px minmax(0,1fr)!important;gap:4px!important;width:auto!important;height:auto!important;padding:10px 8%!important;border:0!important;border-radius:0!important;background:transparent!important}.test2-starter-scene-label{justify-self:start;align-self:start;padding:4px 8px;border:1px solid rgba(103,218,245,.58);border-radius:8px;background:rgba(3,26,43,.82);color:#b8efff;font:900 7px monospace}.test2-starter-heading{justify-self:center;color:#ffe477;font:900 8px monospace;letter-spacing:1px}.test2-starter-preview>.test2-utility-bar{position:absolute!important;top:8px!important;right:9px!important;z-index:3!important}.test2-starter-preview>div{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;align-items:center!important;gap:10px!important;width:100%!important;min-width:0!important}.test2-starter-preview article{display:grid!important;grid-template-rows:72px 13px 16px 10px!important;justify-items:center!important;align-content:center!important;gap:3px!important;min-width:0!important;padding:5px!important;border:0!important;border-radius:0!important;background:transparent!important}.test2-starter-preview img{width:68px!important;height:68px!important;filter:drop-shadow(0 5px 4px rgba(0,0,0,.72))!important}.test2-starter-preview b{font-size:8px!important;text-shadow:0 1px 3px #000}.test2-starter-preview em{transform:scale(.9)!important}.test2-starter-preview i{grid-template-columns:15px 1fr!important}.test2-starter-preview i small{font-size:6px!important;text-shadow:0 1px 2px #000}.test2-starter-preview i u{height:5px!important}
 @media(max-width:520px){.adventure-shell.test2-layout>#bottomContainer:has(#test2StarterPreview){height:64dvh!important;min-height:64dvh!important;max-height:64dvh!important}.test2-starter-preview{grid-template-rows:16px 18px minmax(0,1fr)!important;padding:8px 7%!important}.test2-starter-preview>div{gap:5px!important}.test2-starter-preview article{grid-template-rows:54px 10px 14px 8px!important;padding:3px!important}.test2-starter-preview img{width:52px!important;height:52px!important}.test2-starter-preview b{font-size:7px!important}.test2-starter-preview i small{font-size:5px!important}.test2-starter-preview i u{height:4px!important}}
 /* Scelta starter nella scena di combattimento: candidati all'altezza del fronte nemico. */
-.adventure-shell.test2-layout>#bottomContainer:has(#test2StarterPreview){background:linear-gradient(rgba(2,15,20,.05),rgba(2,11,19,.24)),url("./img/prove-bosco/BoscoSmeraldo-Scenario.png") center/cover!important}.test2-starter-preview{display:block!important;padding:0!important}.test2-starter-preview>.test2-starter-scene-label{position:absolute!important;top:12px!important;left:12px!important}.test2-starter-preview>.test2-starter-heading{position:absolute!important;top:43px!important;left:50%!important;transform:translateX(-50%)!important;white-space:nowrap!important;text-shadow:0 2px 3px #000}.test2-starter-preview>div{position:absolute!important;top:54%!important;right:7%!important;left:7%!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;align-items:end!important;gap:8px!important;width:auto!important;transform:translateY(-50%)!important}.test2-starter-preview article{grid-template-rows:90px 14px 17px 10px!important;gap:3px!important;padding:0 3px!important}.test2-starter-preview img{width:86px!important;height:86px!important;max-width:100%!important;max-height:86px!important}.test2-starter-preview b{font-size:8px!important}.test2-starter-preview em{transform:scale(.84)!important}.test2-starter-preview i{width:88%!important}.test2-starter-preview i u{height:4px!important;box-shadow:0 1px 4px #0008!important}
+.adventure-shell.test2-layout>#bottomContainer:has(#test2StarterPreview){background:linear-gradient(rgba(2,15,20,.05),rgba(2,11,19,.24)),url("./img/prove-bosco/Grotta-Scenario-v2.png") center/cover!important}.test2-starter-preview{display:block!important;padding:0!important}.test2-starter-preview>.test2-starter-scene-label{position:absolute!important;top:12px!important;left:12px!important}.test2-starter-preview>.test2-starter-heading{position:absolute!important;top:43px!important;left:50%!important;transform:translateX(-50%)!important;white-space:nowrap!important;text-shadow:0 2px 3px #000}.test2-starter-preview>div{position:absolute!important;top:54%!important;right:7%!important;left:7%!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;align-items:end!important;gap:8px!important;width:auto!important;transform:translateY(-50%)!important}.test2-starter-preview article{grid-template-rows:90px 14px 17px 10px!important;gap:3px!important;padding:0 3px!important}.test2-starter-preview img{width:86px!important;height:86px!important;max-width:100%!important;max-height:86px!important}.test2-starter-preview b{font-size:8px!important}.test2-starter-preview em{transform:scale(.84)!important}.test2-starter-preview i{width:88%!important}.test2-starter-preview i u{height:4px!important;box-shadow:0 1px 4px #0008!important}
 @media(max-width:520px){.test2-starter-preview>.test2-starter-scene-label{top:8px!important;left:8px!important}.test2-starter-preview>.test2-starter-heading{top:36px!important}.test2-starter-preview>div{top:54%!important;right:5%!important;left:5%!important;gap:4px!important}.test2-starter-preview article{grid-template-rows:66px 11px 14px 8px!important;gap:2px!important}.test2-starter-preview img{width:64px!important;height:64px!important;max-height:64px!important}.test2-starter-preview b{font-size:7px!important}.test2-starter-preview em{transform:scale(.72)!important}.test2-starter-preview i{width:94%!important}}
 /* Starter finale: 100px in scena; mappa 3+2 con HUD dedicata. */
 .test2-starter-preview>div{top:56%!important}.test2-starter-preview article{grid-template-rows:104px 14px 17px 10px!important}.test2-starter-preview img{width:100px!important;height:100px!important;max-height:100px!important}.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel{grid-template-rows:43px minmax(0,1fr)!important;align-content:stretch!important;padding:10px!important;background:linear-gradient(145deg,rgba(4,25,43,.96),rgba(3,15,30,.98))!important;border:1px solid rgba(107,218,247,.72)!important;border-radius:14px!important}.test2-starter-choice-panel>header{display:grid;justify-items:center;align-content:center;gap:3px;color:#ffe477}.test2-starter-choice-panel>header span{font:900 9px monospace;letter-spacing:1px}.test2-starter-choice-panel>header small{color:#a7ddeb;font:700 6px monospace}.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel>div{grid-template-columns:repeat(6,minmax(0,1fr))!important;grid-template-rows:repeat(2,minmax(0,1fr))!important;align-content:center!important;gap:8px!important;height:auto!important}.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel>div>button,.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel>div>button:nth-child(4){grid-column:span 2!important;height:100%!important;padding:4px!important}.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel>div>button:nth-child(4){grid-column:2 / span 2!important}.adventure-shell.test2-layout #map.test2-starter-choice-map>.test2-starter-choice-panel>div>button img{width:100px!important;height:100px!important;max-width:100%!important;max-height:100%!important}
@@ -9900,7 +9900,7 @@ img[src*="spritemon/"]{width:100px!important;height:100px!important;object-fit:c
 
 /* Fight e scena condividono le stesse nove coordinate reali. */
 .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .bottom-campagna-member[class*="test2-fight-position-"]{transform:translate(-45px,-40px)!important}
-.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .bottom-campagna-member.test2-fight-position-0{left:40px!important;top:calc(50% + 10px)!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .bottom-campagna-member.test2-fight-position-0{left:60px!important;top:calc(50% + 10px)!important}
 .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .bottom-campagna-member.test2-fight-position-1{left:115px!important;top:calc(50% + 5px)!important}
 .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .bottom-campagna-member.test2-fight-position-2{left:190px!important;top:calc(50% + 13px)!important}
 .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .bottom-campagna-member.test2-fight-position-3{left:35px!important;top:calc(50% + 85px)!important}
@@ -9970,6 +9970,55 @@ img[src*="spritemon/"]{width:100px!important;height:100px!important;object-fit:c
 
 /* Griglia nemica: lieve spostamento verso il lato destro dell'arena. */
 .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-formation{transform:translateX(10px)!important}
+
+/* Formazione avversaria: tre Pokémon sul fronte alto e due subito sotto,
+   centrati. Ogni HUD resta ancorato alla propria sprite. */
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-formation{
+  inset:0!important;display:block!important;transform:none!important
+}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite{
+  position:absolute!important;display:block!important;width:100px!important;height:100px!important;
+  right:auto!important;bottom:auto!important;overflow:visible!important
+}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-4,
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-5{
+  display:block!important;width:100px!important;height:100px!important
+}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite>img{
+  display:block!important;width:100px!important;height:100px!important;max-width:none!important;max-height:none!important
+}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-0{left:55%!important;top:18%!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-1{left:71%!important;top:18%!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-2{left:87%!important;top:18%!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-3{left:63%!important;top:62%!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-4{left:79%!important;top:62%!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-5{left:87%!important;top:62%!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info{
+  top:-27px!important;left:0!important;width:100px!important;height:150px!important;
+  transform:none!important;overflow:visible!important
+}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info>.test2-scene-types{
+  top:0!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important
+}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info>.test2-scene-hp{
+  top:14px!important;left:50%!important;right:auto!important;width:42px!important;height:4px!important;transform:translateX(-50%)!important
+}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info>.test2-scene-name,
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info>.test2-scene-level,
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info>.test2-scene-move-level{
+  left:0!important;right:auto!important
+}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info>.test2-scene-name{top:104px!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info>.test2-scene-level{top:118px!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info>.test2-scene-move-level{top:132px!important}
+@media(max-width:520px){
+  .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-0{left:52%!important;top:17%!important}
+  .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-1{left:68%!important;top:17%!important}
+  .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-2{left:84%!important;top:17%!important}
+  .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-3{left:60%!important;top:61%!important}
+  .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-4{left:76%!important;top:61%!important}
+  .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-5{left:84%!important;top:61%!important}
+}
 
 /* Barra comandi richiudibile: crediti sempre visibili, azioni su richiesta. */
 .adventure-shell.test2-layout .test2-utility-bar{
@@ -10100,6 +10149,105 @@ img[src*="spritemon/"]{width:100px!important;height:100px!important;object-fit:c
   mix-blend-mode:normal!important;
   opacity:1!important;
 }
+
+/* Nodo disponibile: resta il rombo guida, senza l'anello pulsante. */
+#map.test2-horizontal-map .node.available::before,
+#map.test2-horizontal-map .node.current::before{
+  content:none!important;
+  display:none!important;
+  animation:none!important;
+}
+
+/* Selezione a due tocchi nell'editor formazione mobile. */
+.test2-formation-cell>button.selected{
+  border-color:#ffe57b!important;
+  background:rgba(92,68,13,.82)!important;
+  box-shadow:0 0 0 2px rgba(255,229,123,.25),0 0 14px rgba(105,224,255,.65)!important;
+}
+.test2-formation-cell>button{touch-action:none!important;-webkit-user-select:none!important;user-select:none!important}
+.test2-formation-cell.test2-formation-drop-target{border-color:#ffe57b!important;background:rgba(91,76,20,.78)!important;box-shadow:0 0 0 2px rgba(255,229,123,.35),inset 0 0 16px rgba(255,218,95,.18)!important}
+
+/* Starter: stessa gerarchia dei Pokémon nella scena. Tipi e vita sopra,
+   nome e livello subito sotto allo sprite, mai sparsi al bordo del PNG. */
+.test2-starter-preview article{
+  position:relative!important;
+  display:block!important;
+  height:124px!important;
+  padding:0!important;
+}
+.test2-starter-preview article>.test2-starter-scene-top{
+  position:absolute!important;
+  z-index:3!important;
+  top:0!important;
+  left:50%!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:3px!important;
+  width:100%!important;
+  transform:translateX(-50%)!important;
+}
+.test2-starter-preview article>.test2-starter-scene-top em{
+  display:flex!important;
+  min-height:12px!important;
+  padding:0!important;
+  background:transparent!important;
+  transform:scale(.72)!important;
+  transform-origin:center!important;
+}
+.test2-starter-preview article>.test2-starter-scene-top i{
+  display:grid!important;
+  grid-template-columns:11px 30px!important;
+  align-items:center!important;
+  gap:1px!important;
+  width:auto!important;
+  min-height:8px!important;
+  padding:1px 2px!important;
+  border-radius:4px!important;
+  background:rgba(2,18,28,.72)!important;
+  font-style:normal!important;
+}
+.test2-starter-preview article>.test2-starter-scene-top i u{height:3px!important}
+.test2-starter-preview article>img{
+  position:absolute!important;
+  z-index:1!important;
+  top:14px!important;
+  left:50%!important;
+  transform:translateX(-50%)!important;
+}
+.test2-starter-preview article>.test2-starter-scene-bottom{
+  position:absolute!important;
+  z-index:3!important;
+  top:112px!important;
+  left:50%!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:3px!important;
+  width:100%!important;
+  transform:translateX(-50%)!important;
+  white-space:nowrap!important;
+}
+.test2-starter-preview article>.test2-starter-scene-bottom b,
+.test2-starter-preview article>.test2-starter-scene-bottom small{
+  display:block!important;
+  max-width:68%!important;
+  overflow:hidden!important;
+  padding:1px 3px!important;
+  border-radius:4px!important;
+  background:rgba(2,18,28,.75)!important;
+  color:#fff4c9!important;
+  font:900 6px/1 monospace!important;
+  text-overflow:ellipsis!important;
+}
+.test2-starter-preview article>.test2-starter-scene-bottom small{color:#aeeeff!important}
+@media(max-width:520px){
+  .test2-starter-preview article{height:116px!important}
+  .test2-starter-preview article>img{top:12px!important}
+  .test2-starter-preview article>.test2-starter-scene-bottom{top:104px!important}
+  .test2-starter-preview article>.test2-starter-scene-top em{transform:scale(.63)!important}
+  .test2-starter-preview article>.test2-starter-scene-bottom b,.test2-starter-preview article>.test2-starter-scene-bottom small{font-size:5px!important}
+}
 #bottomCampagna .test2-scene-building.is-editing{
   z-index:24!important;pointer-events:auto!important;outline:2px dashed rgba(119,234,255,.96)!important;
   outline-offset:4px!important;border-radius:8px!important;background:rgba(70,220,255,.08)!important;
@@ -10181,6 +10329,47 @@ img[src*="spritemon/"]{width:100px!important;height:100px!important;object-fit:c
   text-shadow:0 1px 3px #000;transform:translateX(-50%);animation:test2AvailableNodeMarker 1.7s ease-in-out infinite;pointer-events:none
 }
 
+/* Zaino: esiste soltanto nella mappa normale. */
+#map.test2-horizontal-map .test2-map-backpack{
+  position:absolute!important;z-index:40!important;right:10px!important;bottom:9px!important;
+  display:grid!important;place-items:center!important;width:32px!important;height:29px!important;
+  margin:0!important;padding:0!important;border:1px solid rgba(119,224,250,.82)!important;border-radius:8px!important;
+  background:linear-gradient(145deg,rgba(18,93,122,.96),rgba(4,32,55,.96))!important;color:#effcff!important;
+  font:15px/1 sans-serif!important;cursor:pointer!important;box-shadow:0 3px 8px rgba(0,0,0,.48)!important
+}
+#map.test2-horizontal-map .test2-map-backpack:hover{filter:brightness(1.2)!important;transform:translateY(-1px)!important}
+@media(max-width:520px){#map.test2-horizontal-map .test2-map-backpack{right:7px!important;bottom:7px!important;width:29px!important;height:26px!important;font-size:13px!important}}
+
+/* Comandi solo mappa: Formazione e Zaino affiancati in alto a destra. */
+#map.test2-horizontal-map .test2-map-tool{position:absolute!important;z-index:40!important;top:8px!important;bottom:auto!important;display:grid!important;place-items:center!important;width:32px!important;height:29px!important;margin:0!important;padding:0!important;border:1px solid rgba(119,224,250,.82)!important;border-radius:8px!important;background:linear-gradient(145deg,rgba(18,93,122,.96),rgba(4,32,55,.96))!important;color:#effcff!important;font:15px/1 sans-serif!important;cursor:pointer!important;box-shadow:0 3px 8px rgba(0,0,0,.48)!important}
+#map.test2-horizontal-map .test2-map-tool:hover{filter:brightness(1.2)!important;transform:translateY(-1px)!important}
+#map.test2-horizontal-map .test2-map-formation{right:auto!important;left:9px!important}
+#map.test2-horizontal-map .test2-map-backpack{right:auto!important;left:47px!important}
+@media(max-width:520px){#map.test2-horizontal-map .test2-map-tool{top:6px!important;width:29px!important;height:26px!important;font-size:13px!important}#map.test2-horizontal-map .test2-map-formation{right:auto!important;left:7px!important}#map.test2-horizontal-map .test2-map-backpack{right:auto!important;left:41px!important}}
+
+/* Ripristino griglia avversari: due colonne × tre righe sul lato destro. */
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-formation{inset:0!important;display:block!important;transform:translateX(10px)!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite{position:absolute!important;display:grid!important;width:112px!important;height:112px!important;right:auto!important;bottom:auto!important;overflow:visible!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-0,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-1{top:calc(31% - 18px)!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-2,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-3{top:calc(52% - 18px)!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-4,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-5{top:calc(73% - 18px)!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-0,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-2,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-4{left:auto!important;right:70px!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-1,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-3,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-5{left:auto!important;right:0!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite>img{width:100px!important;height:100px!important;max-width:none!important;max-height:none!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info{top:10px!important;left:50%!important;width:100px!important;height:100px!important;transform:translateX(-50%)!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info>.test2-scene-types{top:-6px!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info>.test2-scene-hp{top:9px!important;left:50%!important;right:auto!important;width:34px!important;height:3px!important;transform:translateX(-50%)!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info>.test2-scene-name{top:22px!important;left:auto!important;right:4px!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info>.test2-scene-level{top:38px!important;left:auto!important;right:4px!important}
+.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite .test2-enemy-scene-info>.test2-scene-move-level{top:52px!important;left:auto!important;right:4px!important}
+@media(max-width:520px){
+  .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-0,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-1{top:calc(31% + 0px)!important}
+  .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-2,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-3{top:calc(52% + 0px)!important}
+  .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-4,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-5{top:calc(73% + 0px)!important}
+  .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-0,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-2,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-4{right:70px!important}
+  .adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-1,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-3,.adventure-shell.test2-layout #bottomCampagna.test2-fight-bottom .test2-enemy-sprite.enemy-slot-5{right:0!important}
+}
+
 /* Le scelte attive restano segnalate dal cerchio ciano e dal marker, senza
    il riquadro giallo attorno al nodo. */
 #map.test2-horizontal-map .node.available,
@@ -10188,3 +10377,56 @@ img[src*="spritemon/"]{width:100px!important;height:100px!important;object-fit:c
   border-color:transparent!important;
   box-shadow:0 0 10px rgba(83,221,255,.72)!important
 }
+
+/* Prova asset Grotta: scenario e box mappa condividono l'ambientazione. */
+.adventure-shell.test2-layout #bottomContainer:has(#bottomCampagna[data-scene="tunnel"]),
+.adventure-shell.test2-layout #bottomContainer:has(.test2-battle-surface){
+  background-image:linear-gradient(rgba(5,10,21,.12),rgba(1,4,12,.42)),url("./img/prove-bosco/Grotta-Scenario.png")!important;
+  background-size:cover!important;background-repeat:no-repeat!important;background-position:center bottom!important;animation:none!important
+}
+.adventure-shell.test2-layout #bottomCampagna[data-scene="tunnel"]{
+  background-image:linear-gradient(rgba(5,10,21,.08),rgba(1,4,12,.28)),url("./img/prove-bosco/Grotta-Scenario.png")!important;
+  background-size:cover!important;background-repeat:no-repeat!important;background-position:center bottom!important;animation:none!important
+}
+
+/* Fondale esplicito per ogni variante del box scena, compresa la scelta
+   iniziale: evita che i pannelli trasparenti ereditino uno sfondo vuoto. */
+.adventure-shell.test2-layout #bottomContainer:has(#test2StarterPreview),
+.adventure-shell.test2-layout #bottomContainer:has(#bottomCampagna),
+.adventure-shell.test2-layout #bottomCampagna{
+  background-color:#08111d!important;
+  background-image:linear-gradient(rgba(5,10,21,.08),rgba(1,4,12,.32)),url("./img/prove-bosco/Grotta-Scenario.png")!important;
+  background-size:cover!important;background-repeat:no-repeat!important;background-position:center bottom!important;animation:none!important
+}
+
+/* Scheda oggetto: effetto e confronto immediato prima dell'equipaggiamento. */
+.adventure-shell.test2-layout #map.test2-backpack-info-map{padding:7px!important;background:rgba(2,14,26,.92)!important}
+.adventure-shell.test2-layout #map.test2-backpack-info-map .test2-item-info-panel{display:grid!important;grid-template-rows:auto auto auto minmax(0,1fr)!important;gap:7px!important;width:100%!important;height:100%!important;min-height:0!important;max-width:none!important;margin:0!important;padding:9px!important;border:1px solid rgba(98,210,241,.78)!important;border-radius:12px!important;background:linear-gradient(145deg,rgba(6,33,53,.98),rgba(3,17,31,.98))!important;box-shadow:inset 0 1px rgba(230,252,255,.16)!important;overflow:hidden!important}
+.test2-item-info-panel>header{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:7px!important}.test2-item-info-panel>header>span{padding:3px 6px!important;border:1px solid rgba(255,223,123,.65)!important;border-radius:5px!important;background:rgba(88,62,12,.45)!important;color:#fff0a6!important;font:900 6px/1 monospace!important;letter-spacing:.6px!important}.test2-item-info-panel .test2-backpack-back{min-height:25px!important;margin:0!important;padding:0 7px!important;border-radius:7px!important;font:900 7px monospace!important}
+.test2-item-info-main{display:grid!important;grid-template-columns:54px minmax(0,1fr)!important;align-items:center!important;gap:8px!important;padding:6px 7px!important;border:1px solid rgba(83,184,222,.48)!important;border-radius:9px!important;background:rgba(5,25,42,.78)!important}.test2-item-info-icon{width:50px!important;height:50px!important;border:1px solid rgba(255,218,105,.62)!important;border-radius:9px!important;background:radial-gradient(circle,rgba(119,84,14,.38),rgba(6,21,35,.66))!important}.test2-item-info-icon img{width:43px!important;height:43px!important}.test2-item-info-main small{color:#ffe79b!important;font:900 6px monospace!important}.test2-item-info-main h2{margin:3px 0!important;color:#f4fbff!important;font:900 14px/1 monospace!important}.test2-item-info-main p{margin:0!important;color:#afdae9!important;font:700 6px/1.3 monospace!important}
+.test2-item-effect-card{gap:3px!important;padding:7px 8px!important;border-color:rgba(255,219,105,.65)!important;border-radius:8px!important;background:linear-gradient(105deg,rgba(90,63,12,.46),rgba(6,29,46,.9))!important}.test2-item-effect-card small{font-size:6px!important}.test2-item-effect-card b{font-size:9px!important}.test2-item-effect-card em{color:#aee7f5!important;font:700 6px/1.25 monospace!important;font-style:normal!important}
+.test2-item-targets{display:grid!important;grid-template-columns:1fr!important;grid-template-rows:auto repeat(3,minmax(0,1fr))!important;gap:4px!important;min-height:0!important}.test2-item-targets>header{display:flex!important;align-items:baseline!important;justify-content:space-between!important;padding:0 2px!important}.test2-item-targets>header b{color:#f5fbff!important;font:900 8px monospace!important}.test2-item-targets>header small{color:#87cfe5!important;font:700 6px monospace!important}.test2-item-target-card{display:grid!important;grid-template-columns:34px minmax(0,1fr) auto!important;align-items:center!important;gap:6px!important;min-height:0!important;margin:0!important;padding:4px 6px!important;border:1px solid rgba(74,162,200,.62)!important;border-radius:8px!important;background:rgba(6,29,47,.84)!important;text-align:left!important}.test2-item-target-card:hover,.test2-item-target-card.test2-backpack-drop-target{border-color:#ffe37d!important;background:linear-gradient(100deg,rgba(48,110,106,.9),rgba(9,51,65,.96))!important;box-shadow:0 0 0 1px rgba(255,227,125,.3)!important}.test2-item-target-card img{width:31px!important;height:31px!important;object-fit:contain!important;image-rendering:pixelated!important}.test2-item-target-card div{display:grid!important;gap:1px!important;min-width:0!important}.test2-item-target-card small{color:#8ed8ef!important;font:700 5px monospace!important}.test2-item-target-card b{overflow:hidden!important;color:#f7fbff!important;font:900 8px monospace!important;text-overflow:ellipsis!important;white-space:nowrap!important}.test2-item-target-card em{overflow:hidden!important;color:#b5f7cf!important;font:800 6px/1.15 monospace!important;font-style:normal!important;text-overflow:ellipsis!important;white-space:nowrap!important}.test2-item-target-card>span{padding:3px 4px!important;border:1px solid rgba(255,221,120,.55)!important;border-radius:4px!important;background:rgba(95,66,11,.5)!important;color:#fff0a9!important;font:900 5px monospace!important}
+@media(max-width:520px){.adventure-shell.test2-layout #map.test2-backpack-info-map{padding:5px!important}.adventure-shell.test2-layout #map.test2-backpack-info-map .test2-item-info-panel{gap:5px!important;padding:7px!important}.test2-item-info-main{grid-template-columns:47px minmax(0,1fr)!important;padding:5px!important}.test2-item-info-icon{width:43px!important;height:43px!important}.test2-item-info-icon img{width:37px!important;height:37px!important}.test2-item-info-main h2{font-size:12px!important}.test2-item-target-card{grid-template-columns:29px minmax(0,1fr) auto!important;padding:3px 5px!important}.test2-item-target-card img{width:27px!important;height:27px!important}.test2-item-target-card b{font-size:7px!important}.test2-item-target-card em{font-size:5px!important}}
+
+/* Versione compatta: deve entrare interamente nel box mappa, anche in verticale. */
+.adventure-shell.test2-layout #map.test2-backpack-info-map .test2-item-info-panel{grid-template-rows:22px 54px 42px minmax(0,1fr)!important;gap:4px!important;padding:6px!important;overflow:hidden!important}.test2-item-info-panel>header{min-height:0!important}.test2-item-info-panel .test2-backpack-back{min-height:22px!important;padding:0 6px!important;font-size:6px!important}.test2-item-info-main{min-height:0!important;grid-template-columns:43px minmax(0,1fr)!important;gap:6px!important;padding:4px 5px!important;overflow:hidden!important}.test2-item-info-icon{width:39px!important;height:39px!important}.test2-item-info-icon img{width:33px!important;height:33px!important}.test2-item-info-main small{font-size:5px!important}.test2-item-info-main h2{margin:2px 0!important;font-size:11px!important}.test2-item-info-main p{display:-webkit-box!important;overflow:hidden!important;font-size:5px!important;line-height:1.2!important;-webkit-box-orient:vertical!important;-webkit-line-clamp:2!important}.test2-item-effect-card{min-height:0!important;padding:5px 6px!important;overflow:hidden!important}.test2-item-effect-card small{font-size:5px!important}.test2-item-effect-card b{overflow:hidden!important;font-size:7px!important;line-height:1.1!important;text-overflow:ellipsis!important;white-space:nowrap!important}.test2-item-effect-card em{overflow:hidden!important;font-size:5px!important;white-space:nowrap!important;text-overflow:ellipsis!important}.test2-item-targets{grid-template-rows:13px repeat(3,minmax(31px,1fr))!important;gap:3px!important;overflow:hidden!important}.test2-item-targets>header{min-height:0!important}.test2-item-targets>header b,.test2-item-targets>header small{font-size:5px!important}.test2-item-target-card{min-height:31px!important;grid-template-columns:28px minmax(0,1fr) auto!important;gap:4px!important;padding:2px 4px!important;overflow:hidden!important}.test2-item-target-card img{width:25px!important;height:25px!important}.test2-item-target-card small{font-size:4px!important}.test2-item-target-card b{font-size:6px!important}.test2-item-target-card em{font-size:4px!important}.test2-item-target-card>span{padding:2px 3px!important;font-size:4px!important}
+
+/* La vecchia griglia usava button molto alti: queste regole vincono anche su mobile. */
+.adventure-shell.test2-layout #map.test2-backpack-info-map .test2-item-targets{display:grid!important;grid-template-columns:1fr!important;grid-template-rows:13px!important;grid-auto-rows:43px!important;align-content:start!important;gap:4px!important;min-height:0!important;overflow:hidden!important}.adventure-shell.test2-layout #map.test2-backpack-info-map .test2-item-targets>.test2-item-target-card{display:grid!important;grid-template-columns:29px minmax(0,1fr) auto!important;grid-template-rows:1fr!important;align-items:center!important;justify-items:stretch!important;min-height:43px!important;height:43px!important;margin:0!important;padding:3px 5px!important;overflow:hidden!important}.adventure-shell.test2-layout #map.test2-backpack-info-map .test2-item-targets>.test2-item-target-card>img{grid-row:1!important;width:27px!important;height:27px!important;margin:0!important}.adventure-shell.test2-layout #map.test2-backpack-info-map .test2-item-targets>.test2-item-target-card>div{grid-row:1!important;display:grid!important;gap:1px!important;min-width:0!important;text-align:left!important}.adventure-shell.test2-layout #map.test2-backpack-info-map .test2-item-targets>.test2-item-target-card>span{grid-row:1!important;align-self:center!important;width:auto!important;height:auto!important;margin:0!important}.adventure-shell.test2-layout #map.test2-backpack-info-map .test2-item-targets>.test2-item-target-card small{display:block!important;min-height:0!important;margin:0!important;font-size:4px!important}.adventure-shell.test2-layout #map.test2-backpack-info-map .test2-item-targets>.test2-item-target-card b{display:block!important;margin:0!important;font-size:7px!important;text-align:left!important}.adventure-shell.test2-layout #map.test2-backpack-info-map .test2-item-targets>.test2-item-target-card em{display:block!important;min-height:0!important;margin:0!important;font-size:5px!important;text-align:left!important}
+
+/* Dettaglio oggetto v2: informazioni sopra, tre Pokémon affiancati sotto. */
+.adventure-shell.test2-layout #map.test2-backpack-info-map{padding:6px!important;background:rgba(2,14,26,.82)!important}
+.adventure-shell.test2-layout #map.test2-backpack-info-map .test2-item-info-v2{display:grid!important;grid-template-rows:24px minmax(72px,auto) minmax(0,1fr)!important;gap:7px!important;box-sizing:border-box!important;width:100%!important;height:100%!important;padding:8px!important;border:1px solid rgba(98,210,241,.78)!important;border-radius:12px!important;background:linear-gradient(145deg,rgba(6,33,53,.98),rgba(3,17,31,.98))!important;color:#effcff!important;overflow:hidden!important}
+.test2-item-info-v2>header{display:flex!important;align-items:center!important;justify-content:space-between!important}.test2-item-info-v2>header>span{padding:3px 6px!important;border:1px solid rgba(255,223,123,.65)!important;border-radius:5px!important;background:rgba(88,62,12,.45)!important;color:#fff0a6!important;font:900 6px monospace!important}.test2-item-info-v2 .test2-backpack-back{min-height:23px!important;padding:0 7px!important;border:1px solid rgba(132,224,255,.65)!important;border-radius:7px!important;background:#0b405a!important;color:#f0fcff!important;font:800 7px monospace!important}
+.test2-item-v2-summary{display:grid!important;grid-template-columns:60px minmax(0,1fr)!important;align-items:center!important;gap:8px!important;padding:6px!important;border:1px solid rgba(83,184,222,.5)!important;border-radius:9px!important;background:rgba(5,25,42,.78)!important;overflow:hidden!important}.test2-item-v2-icon{display:grid!important;place-items:center!important;width:54px!important;height:54px!important;border:1px solid rgba(255,218,105,.62)!important;border-radius:9px!important;background:radial-gradient(circle,rgba(119,84,14,.38),rgba(6,21,35,.66))!important}.test2-item-v2-icon img{width:46px!important;height:46px!important;object-fit:contain!important;image-rendering:pixelated!important}.test2-item-v2-icon i{font-size:32px!important;font-style:normal!important}.test2-item-v2-summary small{color:#ffe79b!important;font:900 6px monospace!important}.test2-item-v2-summary h2{margin:2px 0!important;color:#f4fbff!important;font:900 12px monospace!important}.test2-item-v2-summary p{display:-webkit-box!important;overflow:hidden!important;margin:0!important;color:#afdae9!important;font:700 6px/1.25 monospace!important;-webkit-box-orient:vertical!important;-webkit-line-clamp:2!important}.test2-item-v2-summary p+b{display:block!important;overflow:hidden!important;margin-top:3px!important;color:#fff0a7!important;font:800 6px monospace!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.test2-item-v2-targets{display:grid!important;grid-template-rows:16px minmax(0,1fr)!important;min-height:0!important}.test2-item-v2-targets>header{display:flex!important;align-items:center!important;justify-content:space-between!important;padding:0 2px!important}.test2-item-v2-targets>header b{color:#f5fbff!important;font:900 8px monospace!important}.test2-item-v2-targets>header small{color:#87cfe5!important;font:700 6px monospace!important}.test2-item-v2-targets>div{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important;min-height:0!important}.test2-item-target-choice{display:grid!important;grid-template-rows:minmax(0,1fr) auto auto!important;place-items:center!important;min-width:0!important;min-height:0!important;padding:4px!important;border:1px solid rgba(83,193,225,.78)!important;border-radius:9px!important;background:linear-gradient(145deg,rgba(7,50,72,.96),rgba(4,23,40,.98))!important;color:#effcff!important;cursor:pointer!important}.test2-item-target-choice:hover,.test2-item-target-choice.test2-backpack-drop-target{border-color:#ffe37d!important;background:linear-gradient(145deg,rgba(52,99,86,.98),rgba(6,42,54,.98))!important;box-shadow:0 0 0 1px rgba(255,227,125,.3)!important}.test2-item-target-choice img{width:clamp(28px,8vw,48px)!important;height:clamp(28px,8vw,48px)!important;object-fit:contain!important;image-rendering:pixelated!important}.test2-item-target-choice b{max-width:100%!important;overflow:hidden!important;color:#fff4c0!important;font:900 7px monospace!important;text-overflow:ellipsis!important;white-space:nowrap!important}.test2-item-target-choice small{color:#91dcf7!important;font:800 5px monospace!important}
+
+/* Sul touch il trascinamento degli oggetti deve prevalere allo scroll della pagina. */
+.test2-backpack-tile,.test2-item-v2-icon{touch-action:none!important;-webkit-user-select:none!important;user-select:none!important}
+
+/* Scheda Pokémon: lettura rapida, valori effettivi e feedback oggetti. */
+.test2-member-info{width:min(94vw,390px)!important;max-height:min(86dvh,610px)!important;gap:7px!important;padding:10px!important}
+.test2-member-info>header{grid-template-columns:58px minmax(0,1fr) 25px!important;gap:7px!important}.test2-member-portrait{width:56px!important;height:56px!important;border-radius:10px!important}.test2-member-portrait img{width:52px!important;height:52px!important}.test2-member-info h2{font-size:18px!important}.test2-member-info>header span{font-size:7px!important}.test2-member-hp{height:14px!important}.test2-member-hp span{font-size:7px!important;line-height:12px!important}
+.test2-member-stats{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:4px!important}.test2-member-stats div{min-height:40px!important;padding:4px 2px!important;border-radius:7px!important}.test2-member-stats small{font-size:6px!important}.test2-member-stats b{margin-top:1px!important;font-size:10px!important}.test2-member-stats em{font-size:4px!important}
+.test2-member-move{gap:3px!important;padding:7px 8px!important;border-radius:8px!important}.test2-member-move>header{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:5px!important}.test2-member-move>header small{font-size:6px!important}.test2-member-move>header em{margin:0!important;color:#ffe99a!important;font:800 6px/1.2 monospace!important;text-align:right!important}.test2-member-move>b{font-size:10px!important}.test2-member-move>p{display:flex!important;flex-wrap:wrap!important;gap:3px!important;margin:1px 0 0!important;color:#a6c9d9!important;font:700 6px/1.25 monospace!important}.test2-member-move>p span{padding:2px 4px!important;border:1px solid rgba(129,224,173,.48)!important;border-radius:4px!important;background:rgba(24,94,58,.36)!important;color:#bfffd9!important}
+.test2-member-equipment{gap:4px!important}.test2-member-equipment>header b{font-size:8px!important}.test2-member-item{grid-template-columns:28px minmax(0,1fr) 20px!important;min-height:38px!important;gap:5px!important;padding:4px 5px!important;border-radius:7px!important}.test2-member-item img,.test2-member-item i{width:26px!important;height:26px!important}.test2-member-item b{font-size:8px!important}.test2-member-item small{margin-top:0!important;font-size:6px!important;line-height:1.15!important}.test2-member-item em{display:block!important;margin-top:2px!important;color:#95aebb!important;font:800 5px/1 monospace!important;font-style:normal!important}.test2-member-item.is-active{border-color:rgba(112,235,159,.88)!important;background:linear-gradient(105deg,rgba(16,93,61,.54),rgba(5,27,44,.85))!important}.test2-member-item.is-active em{color:#a9ffd0!important}.test2-member-item button{width:20px!important;height:20px!important;font-size:14px!important}.test2-member-empty{padding:7px!important;font-size:7px!important}.test2-member-info footer{gap:5px!important}.test2-member-info footer button{min-height:27px!important;font-size:8px!important}
