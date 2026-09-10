@@ -10167,6 +10167,8 @@ img[src*="spritemon/"]{width:100px!important;height:100px!important;object-fit:c
 .test2-formation-cell>button{touch-action:none!important;-webkit-user-select:none!important;user-select:none!important}
 .test2-formation-cell.test2-formation-drop-target{border-color:#ffe57b!important;background:rgba(91,76,20,.78)!important;box-shadow:0 0 0 2px rgba(255,229,123,.35),inset 0 0 16px rgba(255,218,95,.18)!important}
 
+/* Negozio: gli scaffali scorrono nel loro riquadro sui dispositivi touch. */
+
 /* Starter: stessa gerarchia dei Pokémon nella scena. Tipi e vita sopra,
    nome e livello subito sotto allo sprite, mai sparsi al bordo del PNG. */
 .test2-starter-preview article{
@@ -10422,7 +10424,8 @@ img[src*="spritemon/"]{width:100px!important;height:100px!important;object-fit:c
 .test2-item-v2-targets{display:grid!important;grid-template-rows:16px minmax(0,1fr)!important;min-height:0!important}.test2-item-v2-targets>header{display:flex!important;align-items:center!important;justify-content:space-between!important;padding:0 2px!important}.test2-item-v2-targets>header b{color:#f5fbff!important;font:900 8px monospace!important}.test2-item-v2-targets>header small{color:#87cfe5!important;font:700 6px monospace!important}.test2-item-v2-targets>div{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important;min-height:0!important}.test2-item-target-choice{display:grid!important;grid-template-rows:minmax(0,1fr) auto auto!important;place-items:center!important;min-width:0!important;min-height:0!important;padding:4px!important;border:1px solid rgba(83,193,225,.78)!important;border-radius:9px!important;background:linear-gradient(145deg,rgba(7,50,72,.96),rgba(4,23,40,.98))!important;color:#effcff!important;cursor:pointer!important}.test2-item-target-choice:hover,.test2-item-target-choice.test2-backpack-drop-target{border-color:#ffe37d!important;background:linear-gradient(145deg,rgba(52,99,86,.98),rgba(6,42,54,.98))!important;box-shadow:0 0 0 1px rgba(255,227,125,.3)!important}.test2-item-target-choice img{width:clamp(28px,8vw,48px)!important;height:clamp(28px,8vw,48px)!important;object-fit:contain!important;image-rendering:pixelated!important}.test2-item-target-choice b{max-width:100%!important;overflow:hidden!important;color:#fff4c0!important;font:900 7px monospace!important;text-overflow:ellipsis!important;white-space:nowrap!important}.test2-item-target-choice small{color:#91dcf7!important;font:800 5px monospace!important}
 
 /* Sul touch il trascinamento degli oggetti deve prevalere allo scroll della pagina. */
-.test2-backpack-tile,.test2-item-v2-icon{touch-action:none!important;-webkit-user-select:none!important;user-select:none!important}
+.adventure-shell.test2-layout #map.test2-backpack-map .test2-backpack-tile{touch-action:pan-y!important;-webkit-user-select:none!important;user-select:none!important}
+.test2-item-v2-icon{touch-action:none!important;-webkit-user-select:none!important;user-select:none!important}
 
 /* Scheda Pokémon: lettura rapida, valori effettivi e feedback oggetti. */
 .test2-member-info{width:min(94vw,390px)!important;max-height:min(86dvh,610px)!important;gap:7px!important;padding:10px!important}

@@ -5484,69 +5484,16 @@ PokeMisteryRL.UI = (() => {
     }
     return false;
   };
-  let sceneBackpackTouchItem = null;
-  let sceneBackpackTouchPointerId = null;
-  let sceneBackpackTouchMoved = false;
   const clearSceneBackpackTargets = () => document.querySelectorAll("[data-scene-item-target].scene-item-drop-target").forEach(target => target.classList.remove("scene-item-drop-target"));
-  const sceneBackpackTargetAt = (x, y) => (document.elementsFromPoint?.(x, y) || [document.elementFromPoint(x, y)]).map(node => node?.closest?.("[data-scene-item-target]")).find(Boolean) || null;
-  const updateSceneBackpackTarget = (x, y) => {
-    const target = sceneBackpackTargetAt(x, y);
-    clearSceneBackpackTargets();
-    target?.classList.add("scene-item-drop-target");
-    return target;
-  };
   const highlightSceneBackpackTarget = event => {
     event.preventDefault();
     clearSceneBackpackTargets();
     event.currentTarget?.classList.add("scene-item-drop-target");
   };
   const clearSceneBackpackTarget = event => event.currentTarget?.classList.remove("scene-item-drop-target");
-  const startSceneBackpackTouch = (event, itemId) => {
-    if(event.pointerType === "mouse") return;
-    sceneBackpackTouchItem = itemId;
-    sceneBackpackTouchPointerId = event.pointerId;
-    sceneBackpackTouchMoved = { x:event.clientX, y:event.clientY, dragging:false };
-    event.currentTarget?.setPointerCapture?.(event.pointerId);
-  };
-  const moveSceneBackpackTouch = event => {
-    if(!sceneBackpackTouchItem) return;
-    const start = sceneBackpackTouchMoved;
-    if(!start?.dragging && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 8) return;
-    if(start) start.dragging = true;
-    event.preventDefault();
-    updateSceneBackpackTarget(event.clientX, event.clientY);
-  };
-  const finishSceneBackpackTouch = event => {
-    if(!sceneBackpackTouchItem) return false;
-    const itemId = sceneBackpackTouchItem;
-    const target = updateSceneBackpackTarget(event.clientX, event.clientY);
-    const dragged = !!sceneBackpackTouchMoved?.dragging;
-    sceneBackpackTouchItem = null;
-    sceneBackpackTouchPointerId = null;
-    sceneBackpackTouchMoved = false;
-    clearSceneBackpackTargets();
-    if(dragged && target){
-      event.preventDefault();
-      return applyTest2BackpackItem(itemId, Number(target.dataset.sceneItemTarget));
-    }
-    return false;
-  };
-  const endSceneBackpackTouch = event => finishSceneBackpackTouch(event);
-  document.addEventListener("pointermove", event => {
-    if(test2BackpackTouchItem && event.pointerId === test2BackpackTouchPointerId) updateTest2BackpackTarget(event.clientX, event.clientY);
-    if(sceneBackpackTouchItem && event.pointerId === sceneBackpackTouchPointerId) moveSceneBackpackTouch(event);
-  }, { passive:false });
-  document.addEventListener("pointerup", event => {
-    if(sceneBackpackTouchItem && event.pointerId === sceneBackpackTouchPointerId) finishSceneBackpackTouch(event);
-  }, { passive:false });
-  document.addEventListener("pointercancel", event => {
-    if(sceneBackpackTouchItem && event.pointerId === sceneBackpackTouchPointerId){
-      sceneBackpackTouchItem = null;
-      sceneBackpackTouchPointerId = null;
-      sceneBackpackTouchMoved = false;
-      clearSceneBackpackTargets();
-    }
-  }, { passive:true });
+  const startSceneBackpackTouch = (event, itemId) => window.PokeMisteryRL?.MobileDragControls?.startScene(event, itemId);
+  const moveSceneBackpackTouch = event => window.PokeMisteryRL?.MobileDragControls?.moveScene(event);
+  const endSceneBackpackTouch = event => window.PokeMisteryRL?.MobileDragControls?.endScene(event);
 
   const buildTestBottomTemplate = () => `
     <div id="campaignTestBottom" class="campaign-test-bottom">
@@ -7866,49 +7813,10 @@ PokeMisteryRL.UI = (() => {
     event.preventDefault();
     return placeTest2FormationFromSource(event.dataTransfer?.getData("text/plain"), position);
   };
-  let test2FormationTouch = null;
-  const formationCellAt = (x, y) => (document.elementsFromPoint?.(x, y) || [document.elementFromPoint(x, y)]).map(node => node?.closest?.("[data-formation-position]")).find(Boolean) || null;
-  const clearTest2FormationTouchTarget = () => document.querySelectorAll("[data-formation-position].test2-formation-drop-target").forEach(cell => cell.classList.remove("test2-formation-drop-target"));
-  const updateTest2FormationTouchTarget = (x, y) => {
-    const cell = formationCellAt(x, y);
-    clearTest2FormationTouchTarget();
-    cell?.classList.add("test2-formation-drop-target");
-    return cell;
-  };
-  const startTest2FormationTouch = (event, source) => {
-    if(event.pointerType === "mouse" || !PKM_RUN?.test2FormationEditing) return;
-    test2FormationTouch = {source:Number(source), pointerId:event.pointerId, x:event.clientX, y:event.clientY, dragging:false};
-    event.currentTarget?.setPointerCapture?.(event.pointerId);
-  };
-  const moveTest2FormationTouch = event => {
-    const drag = test2FormationTouch;
-    if(!drag || drag.pointerId !== event.pointerId) return;
-    if(!drag.dragging && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 8) return;
-    drag.dragging = true;
-    event.preventDefault();
-    updateTest2FormationTouchTarget(event.clientX, event.clientY);
-  };
-  const finishTest2FormationTouch = event => {
-    const drag = test2FormationTouch;
-    if(!drag || drag.pointerId !== event.pointerId) return false;
-    const target = updateTest2FormationTouchTarget(event.clientX, event.clientY);
-    test2FormationTouch = null;
-    clearTest2FormationTouchTarget();
-    if(drag.dragging && target){
-      event.preventDefault();
-      return placeTest2FormationFromSource(drag.source, Number(target.dataset.formationPosition));
-    }
-    return false;
-  };
-  const endTest2FormationTouch = event => finishTest2FormationTouch(event);
-  const cancelTest2FormationTouch = event => {
-    if(test2FormationTouch?.pointerId !== event.pointerId) return;
-    test2FormationTouch = null;
-    clearTest2FormationTouchTarget();
-  };
-  document.addEventListener("pointermove", event => { if(test2FormationTouch?.pointerId === event.pointerId) moveTest2FormationTouch(event); }, {passive:false});
-  document.addEventListener("pointerup", event => { if(test2FormationTouch?.pointerId === event.pointerId) finishTest2FormationTouch(event); }, {passive:false});
-  document.addEventListener("pointercancel", event => { if(test2FormationTouch?.pointerId === event.pointerId) cancelTest2FormationTouch(event); }, {passive:true});
+  const startTest2FormationTouch = (event, source) => window.PokeMisteryRL?.MobileDragControls?.startFormation(event, source);
+  const moveTest2FormationTouch = event => window.PokeMisteryRL?.MobileDragControls?.moveFormation(event);
+  const endTest2FormationTouch = event => window.PokeMisteryRL?.MobileDragControls?.endFormation(event);
+  const cancelTest2FormationTouch = event => window.PokeMisteryRL?.MobileDragControls?.cancelFormation(event);
   // Il drag HTML non è affidabile sui browser touch: questa coppia di
   // funzioni offre lo stesso spostamento con due tocchi (Pokémon → box).
   const selectTest2FormationPlacementSlot = index => {
@@ -8074,6 +7982,7 @@ PokeMisteryRL.UI = (() => {
     flipTest2SceneBuilding,
     toggleTest2FormationEditor,
     dropTest2Placement,
+    placeTest2FormationFromSource,
     startTest2FormationTouch,
     moveTest2FormationTouch,
     endTest2FormationTouch,

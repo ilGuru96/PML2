@@ -11,6 +11,10 @@ I sistemi esterni devono usare `window.PokeMisteryRL.Runtime` invece delle varia
 
 I moduli si caricano dopo `core.js` e possono aggiungere le proprie API a `window.PokeMisteryRL`.
 
+`features/mobile-drag-controls.js` segue questa regola: ascolta i puntatori touch
+e richiama soltanto le azioni pubbliche `UI.applyTest2BackpackItem()` e
+`UI.placeTest2FormationFromSource()`.
+
 La guida è il primo esempio completo: `features/guide-ui.js` usa soltanto il Runtime, la copia in `texts.js` e le funzioni pubbliche della run.
 
 Vedi anche `CORE-BOUNDARIES.md` per l'ordine delle prossime estrazioni.

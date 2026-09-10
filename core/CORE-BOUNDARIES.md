@@ -14,6 +14,8 @@
 - `features/type-cards.js`: ricompense carte tipo e relativo raccoglitore.
 - `features/guide-ui.js`: menu e pagine della guida.
 - `features/shop.js`: assortimento, dettagli, acquisto e furto da Kecleon.
+- `features/mobile-drag-controls.js`: trascinamento touch di oggetti e Pokémon,
+  con soglia di movimento, rilascio affidabile e feedback del bersaglio.
 
 ## Prossime estrazioni, nell'ordine sicuro
 
